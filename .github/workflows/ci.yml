@@ -1,0 +1,19 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Daemon
+        run: python3 -m unittest discover -s daemon/tests
+      - name: App
+        working-directory: app
+        run: swift test
+      - name: It stands on its own
+        run: |
+          test ! -e app/Sources/TTYCat/_extra
+          ! git grep -n -E 'ProFeatures\.' -- ':!app/Sources/TTYCat/Extensions.swift'
