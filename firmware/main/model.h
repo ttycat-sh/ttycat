@@ -11,7 +11,7 @@
 #define QUESTION_MAX 4     // in one ask
 #define OPTION_MAX 4       // in one question
 #define TYPED_MAX 200      // a typed answer
-#define FW_VERSION "0.8.0"
+#define FW_VERSION "0.8.1"
 
 // In the order the queue sorts them.
 typedef enum { ST_BLOCKED, ST_ERROR, ST_DONE, ST_WORKING, ST_IDLE } state_t;

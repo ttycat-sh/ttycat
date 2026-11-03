@@ -1,4 +1,4 @@
-// Answering a prompt from the panel: the board's Approval, Deny and question screens.
+// Answering a prompt from the panel: the board's Approval and question screens.
 //
 // As on the board, an answer names the exact prompt it was shown for (its rev), and a click
 // this soon after a prompt appears isn't an answer to it. Each card takes `.id(rev)` from
@@ -60,46 +60,27 @@ struct AskCard: View {
 
 private struct ApproveView: View {
   @EnvironmentObject var m: TTYCatModel
-  @StateObject private var denying = Local(false)
   let row: AgentRow
   let armed: Bool
 
   private var busy: Bool { m.answering == row.rev }
 
   var body: some View {
-    if denying.value {
-      denyChoices
-    } else {
-      if let file = row.file {
-        HStack(spacing: 6) {
-          Text(file).font(Pixel.small).foregroundStyle(Palette.white).lineLimit(1)
-          Text("+\(row.add ?? 0)").font(Pixel.small).foregroundStyle(Palette.green)
-          Text("-\(row.del ?? 0)").font(Pixel.small).foregroundStyle(Palette.orange)
-        }
-      }
-      CodeBox(text: row.body ?? "", diff: row.file != nil, shell: row.tool == "BASH")
+    if let file = row.file {
       HStack(spacing: 6) {
-        ChoiceButton(title: "Deny", icon: PixelIcon.cross, enabled: armed && !busy) { denying.value = true }
-        ChoiceButton(title: busy ? "Sending" : "Allow", icon: PixelIcon.check, loud: true, enabled: armed && !busy) {
-          m.answer(row, action: "allow")
-        }
+        Text(file).font(Pixel.small).foregroundStyle(Palette.white).lineLimit(1)
+        Text("+\(row.add ?? 0)").font(Pixel.small).foregroundStyle(Palette.green)
+        Text("-\(row.del ?? 0)").font(Pixel.small).foregroundStyle(Palette.orange)
       }
     }
-  }
-
-  private var denyChoices: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      Text(row.d ?? "").font(Pixel.small).foregroundStyle(Palette.muted2).lineLimit(1)
-      DenyChoice(title: "Stop", detail: "ends the turn and waits for you", loud: true, enabled: !busy) {
+    CodeBox(text: row.body ?? "", diff: row.file != nil, shell: row.tool == "BASH")
+    HStack(spacing: 6) {
+      ChoiceButton(title: "Deny", icon: PixelIcon.cross, enabled: armed && !busy) {
         m.answer(row, action: "deny")
       }
-      DenyChoice(title: "Try another way", detail: "\(row.n ?? "It") carries on without this", enabled: !busy) {
-        m.answer(row, action: "deny-retry")
+      ChoiceButton(title: busy ? "Sending" : "Allow", icon: PixelIcon.check, loud: true, enabled: armed && !busy) {
+        m.answer(row, action: "allow")
       }
-      DenyChoice(title: "Explain first", detail: "\(row.n ?? "It") says why it needs this", enabled: !busy) {
-        m.answer(row, action: "deny-explain")
-      }
-      PixelButton(title: "Back") { denying.value = false }
     }
   }
 }
@@ -119,28 +100,6 @@ struct ChoiceButton: View {
           .foregroundStyle(!enabled ? Palette.faint : loud ? Palette.black : Palette.white)
       }
       .frame(maxWidth: .infinity, minHeight: 36)
-      .pixelBox(loud && enabled ? Palette.orange : Palette.tile, border: loud && enabled ? nil : Palette.line)
-    }
-    .buttonStyle(PixelPress())
-    .disabled(!enabled)
-  }
-}
-
-private struct DenyChoice: View {
-  let title: String
-  let detail: String
-  var loud = false
-  let enabled: Bool
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      VStack(alignment: .leading, spacing: 1) {
-        Caps(title, color: !enabled ? Palette.faint : loud ? Palette.black : Palette.white)
-        Text(detail).font(Pixel.small).foregroundStyle(!enabled ? Palette.faint : loud ? Palette.black : Palette.muted)
-      }
-      .padding(.horizontal, 8)
-      .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
       .pixelBox(loud && enabled ? Palette.orange : Palette.tile, border: loud && enabled ? nil : Palette.line)
     }
     .buttonStyle(PixelPress())

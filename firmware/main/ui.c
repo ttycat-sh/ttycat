@@ -65,7 +65,7 @@ static const char *const S_CHECK[10] = {"..........", ".........g", "........gg"
 static const char *const S_SLEEP[10] = {"..........", "......ooo.", ".......o..", "......ooo.", ".www......",
                                         "...w......", "..w.......", ".www......", "..........", "wwwwwwwwww"};
 
-typedef enum { SCR_BOOT, SCR_OVERVIEW, SCR_QUEUE, SCR_ASK, SCR_DIFF, SCR_DENY, SCR_DETAIL, SCR_LOST, SCR_PET, SCR_GAME, SCR_CHOICE, SCR_KEYS } screen_t;
+typedef enum { SCR_BOOT, SCR_OVERVIEW, SCR_QUEUE, SCR_ASK, SCR_DIFF, SCR_DETAIL, SCR_LOST, SCR_PET, SCR_GAME, SCR_CHOICE, SCR_KEYS } screen_t;
 
 typedef enum {
   A_NONE,
@@ -78,7 +78,6 @@ typedef enum {
   A_NEXT,
   A_ALLOW,
   A_DENY,
-  A_DENY_WHY,
   A_OPTION,
   A_CHOICE_NEXT,
   A_CHOICE_BACK,
@@ -1058,36 +1057,6 @@ static void keyboard_finished(bool saved) {
   back_to_ask(s);
 }
 
-// Deny asks one more thing: what Claude should do about it. Not a design board.
-static void draw_deny(const session_t *s) {
-  gfx_icon(I_LEFT, 6, 8, 1, WHITE);
-  gfx_caps(&sk9, 15, 5, WHITE, "Back", 0);
-  hit(0, 0, 60, 22, A_LATER, 1);
-  int left_ms = ASK_WINDOW_MS - (int)(now_ms() - ask_opened_at);
-  char secs[8];
-  snprintf(secs, sizeof(secs), "%ds", ((left_ms < 0 ? 0 : left_ms) + 999) / 1000);
-  gfx_right(&vt16, 234, 2, ORANGE, secs);
-
-  gfx_box(6, 24, 228, 50, CARD, NULL, BLACK);
-  card_label(s, WHITE);
-  gfx_clip(16, 50, 208, 20);
-  gfx_text(&vt16, 16, 52, MUTED2, s->detail);
-  gfx_noclip();
-
-  static const char *const titles[3] = {"Stop", "Try another way", "Explain first"};
-  static const char *const subs[3] = {"ends the turn and waits for you", "Claude carries on without this",
-                                      "Claude says why it needs this"};
-  for (int i = 0; i < 3; i++) {
-    int y = 80 + i * 78;
-    bool first = i == 0;
-    gfx_box(6, y, 228, 72, answering ? CARD : first ? ORANGE : TILE, answering || first ? NULL : &c_line, BLACK);
-    color_t title = answering ? FAINT : first ? BLACK : WHITE;
-    gfx_caps(&sk11, 18, y + 18, title, titles[i], 1);
-    gfx_text(&vt16, 18, y + 38, answering ? FAINT : first ? BLACK : MUTED, subs[i]);
-    if (!answering) hit(6, y, 228, 72, A_DENY_WHY, i);
-  }
-}
-
 // ---------------------------------------------------------------- 09 Detail
 
 // One line in w px. Text that doesn't fit rests, then scrolls round and comes back.
@@ -1246,10 +1215,7 @@ static void do_action(const hit_t *h) {
       if (now - ask_armed_at >= ARM_DELAY_MS) answer("allow");
       break;
     case A_DENY:
-      if (now - ask_armed_at >= ARM_DELAY_MS) {
-        ask_armed_at = now;  // a double tap on Deny doesn't also pick an answer
-        go(SCR_DENY);
-      }
+      if (now - ask_armed_at >= ARM_DELAY_MS) answer("deny");
       break;
     case A_OPTION:
       if (now - ask_armed_at >= ARM_DELAY_MS && (s = find_session(cur_id))) pick_option(s, h->arg);
@@ -1271,12 +1237,6 @@ static void do_action(const hit_t *h) {
         link_answer(s->id, s->rev, s->q_n, q_picks, counts, q_typed);
         answering = true;
         answering_since = now;
-      }
-      break;
-    case A_DENY_WHY:
-      if (now - ask_armed_at >= ARM_DELAY_MS) {
-        static const char *const acts[3] = {"deny", "deny-retry", "deny-explain"};
-        answer(acts[h->arg]);
       }
       break;
     case A_LATER:
@@ -1363,9 +1323,6 @@ static void on_swipe(char dir) {
         diff_scroll = diff_scroll > 8 ? diff_scroll - 8 : 0;
       }
     }
-  } else if (screen == SCR_DENY && dir == 'R' && !answering) {
-    ask_armed_at = now_ms();
-    go(SCR_ASK);
   } else if ((screen == SCR_OVERVIEW || screen == SCR_PET) && dir == 'R') {
     go(SCR_QUEUE);
   } else if (screen == SCR_PET && dir == 'L') {
@@ -1514,7 +1471,7 @@ static void step_navigation(void) {
   bool linked = now - last_rx_ms < LINK_TIMEOUT_MS && last_rx_ms != 0;
 
   if (!linked && ever_linked) {
-    bool asking = screen == SCR_ASK || screen == SCR_DIFF || screen == SCR_DENY || screen == SCR_CHOICE || screen == SCR_KEYS;
+    bool asking = screen == SCR_ASK || screen == SCR_DIFF || screen == SCR_CHOICE || screen == SCR_KEYS;
     if (asking && find_session(cur_id)) go(SCR_LOST);
     else if (screen != SCR_BOOT && screen != SCR_LOST) go(SCR_BOOT);
     answering = opening = false;
@@ -1529,7 +1486,7 @@ static void step_navigation(void) {
     last_touch_ms = now;
   }
 
-  if (screen == SCR_ASK || screen == SCR_DIFF || screen == SCR_DENY || screen == SCR_CHOICE || screen == SCR_KEYS) {
+  if (screen == SCR_ASK || screen == SCR_DIFF || screen == SCR_CHOICE || screen == SCR_KEYS) {
     session_t *s = find_session(cur_id);
     if (!s || s->state != ST_BLOCKED) {
       // answered here or at the terminal: on to the next one, else back
@@ -1644,9 +1601,6 @@ void ui_tick(void) {
       break;
     case SCR_DIFF:
       if (cur) draw_full(cur);
-      break;
-    case SCR_DENY:
-      if (cur) draw_deny(cur);
       break;
     case SCR_CHOICE:
       if (cur) draw_choice(cur);

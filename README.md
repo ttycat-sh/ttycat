@@ -51,7 +51,7 @@ app/build.sh install    # also copies it to /Applications and starts it
   - Commands, questions and the agent's last words appear in Notification Center, so they can be seen by anyone looking at the screen. macOS's "Show previews" setting hides them.
   - The app asks macOS for permission only when you click **Turn on notifications** in Setup. If it was refused, it's System Settings > Notifications > ttycat.
   - macOS holds notifications back during a Focus, without any error, unless you allow this app in that Focus. Setup always says so, because this build can't tell whether a Focus is on. Time Sensitive wouldn't get through either: it needs an entitlement this build doesn't have, and macOS ignores it without one.
-- **Answers work as they do on the board.** Allow, Deny with a reason, and questions (typed answers here can be up to 1000 characters and aren't limited to ASCII) go only to the hook process that asked, and only for the exact prompt on screen. Buttons wait 600 ms after a prompt appears, and a new prompt waits its turn instead of replacing the one on the card.
+- **Answers work as they do on the board.** Allow, Deny and questions (typed answers here can be up to 1000 characters and aren't limited to ASCII) go only to the hook process that asked, and only for the exact prompt on screen. Buttons wait 600 ms after a prompt appears, and a new prompt waits its turn instead of replacing the one on the card.
 - **Anything running as you can reach the daemon's socket,** so a program you run could answer a prompt. That was already true of `ttycatd.py tap` and `herdr agent send-keys`.
 - **The app carries what it needs:** the daemon, Python and esptool, so a Mac needs nothing installed. The hook points into the app, and repairs itself at launch if the app has moved. `app/vendor.sh` prepares Python and esptool (pinned, from GitHub and PyPI), once. Without it the app still builds and uses the system's Python, for working on it. `TTYCAT_DAEMON_DIR=daemon` runs a build from this checkout instead. Apple silicon only, for now.
 - **The board is optional.** Nothing mentions it until one has been connected.
@@ -109,8 +109,7 @@ Stop the daemon first: it holds the serial port.
 |---|---|
 | **Queue** | Tap a tab or swipe left and right to filter by agent. Swipe up and down for more rows. The hero card is the most urgent session. Tap it, or a row, to open that session. A session on another machine shows that machine's name. |
 | **Overview** | The grid icon, top left. One card per agent. **Next** goes to whatever needs you first. |
-| **Approval** | Allow or Deny within 60 s. If the text doesn't fit, it shows `...`: swipe up to read all of it. |
-| **Deny** | Asks what Claude should do next. **Stop** ends the turn, like No in the terminal. **Try another way** and **Explain first** tell Claude that and let it continue. |
+| **Approval** | Allow or Deny within 60 s. Deny ends the turn, like No in the terminal. If the text doesn't fit, it shows `...`: swipe up to read all of it. |
 | **Question** | When Claude asks a question: tap an option, or **Type an answer** for the keyboard, then **Send**. If it's several questions, **Next** moves through them. Multi-select allows several picks. Swipe up to read everything, including each option's description. **Later** steps away and keeps your picks. |
 | **Needs you** | A prompt the board can't answer. **Open on Mac** focuses that pane in herdr and brings Ghostty forward. The button shows **Opening**, then a green **Look at Mac**. |
 | **Detail** | Recent events for a session, and the chime's mute switch. Lines too long to fit scroll by themselves. Swipe right to go back. |
@@ -122,17 +121,17 @@ Bit lives on the home screen, which has its care buttons. To go there straight a
 
 | It needs | Runs out in | What helps |
 |---|---|---|
-| **Food** | about 16 hours | **Feed**. Each turn an agent finishes earns a snack (+30). With no snacks it gets plain rice (+10). |
+| **Food** | about 16 hours | **Feed**. Each turn that ends earns a snack (+30), however it ended. With no snacks it gets plain rice (+10). |
 | **Fun** | about 20 hours | **Hunt bugs**: tap bugs for 20 seconds. The more you squash, the more it helps. Tapping the pet helps a little, once a minute. |
 | **Rest** | about 20 hours | It sleeps from 22:00 to 07:00. **Sleep** and **Wake up** override that: a nap lasts until it's rested, up to 3 hours, and waking at night buys 30 minutes. |
 | **Cleaning** | a mess every 5 awake hours, 3 at most | **Clean** |
 
 If it stays empty of food, or at 3 messes, for 6 hours it gets sick and turns green. **Heal** cures it. A bubble over its head shows what it wants most.
 
-It grows on finished turns too: level 2 takes 3, level 3 takes 12, level 4 takes 27, and so on. It earns a pilot's headset at level 3, an antenna at 5 and a crown at 8.
+It grows on those turns too: level 2 takes 3, level 3 takes 12, level 4 takes 27, and so on. It earns a pilot's headset at level 3, an antenna at 5 and a crown at 8.
 
 - **It never dies, and it never beeps.** The chime only ever means an agent needs you.
-- **Approvals never feed it,** so there's no reward for approving faster.
+- **Your answers don't feed it.** A turn earns the same snack whether it ran to the end or you denied it, so nothing rewards saying yes.
 - **Agents come first.** A new prompt or error leaves the home screen at once, and a new prompt also ends a game. Taps then don't count until they've stopped for 0.8 s, at least 1.5 s from the interruption, so someone mid-game can't hit Allow by accident.
 - **Time away doesn't count.** At most 12 hours pass while the daemon is off.
 
@@ -151,6 +150,7 @@ Allow, Deny and answers to questions go through Claude Code's `PermissionRequest
 - **An answer can only reach the request it was shown for.** Each request is a hook process waiting on its own socket connection. The board echoes that request's id, and a decision goes only to that process.
 - **Failure leaves the prompt in the terminal.** With no daemon, no board, a crash or a timeout, the hook exits without a decision, and the prompt stays open. Nothing is approved.
 - **Allow is the plain Yes.** It never changes the command and never adds a permission rule. Rules in your settings that deny or ask still apply.
+- **Deny is the plain No.** It ends the turn, and the agent waits for you, as with No in the terminal. No answer here lets it carry on.
 - **Nothing is approved unseen.** The board shows the real command or diff, not Claude's description of it. A clipped one is marked and can be read in full by swiping up. Anything over 1000 characters is terminal-only, and so is an ask that doesn't fit the board's 6 KB of shared text.
 - **Stray taps don't count.** A tap within 600 ms of an ask appearing is ignored, and so is a press that began on another screen.
 - **A question can only be answered, and an answer can only go to a question.** The board sends option numbers and typed text. The daemon turns numbers back into the original labels and refuses anything incomplete, and `hook.py` fills in answers for `AskUserQuestion` and nothing else.
@@ -206,7 +206,7 @@ The design previews at 2x; the panel shows it at 1x, where some of the specified
 
 The design's Idle board is now the pet's home screen, with a smaller clock to make room for the care buttons. It appears after 30 s untouched, not after 60 s with every agent idle.
 
-Added beyond the design: the swipe-up full view, row scrolling on the queue, machine names, the Deny choices, the question screen and keyboard, the pet with its screens and game, the "All clear" tile on Overview, and "runs herdr focus" in place of "runs focusCommand".
+Added beyond the design: the swipe-up full view, row scrolling on the queue, machine names, the question screen and keyboard, the pet with its screens and game, the "All clear" tile on Overview, and "runs herdr focus" in place of "runs focusCommand".
 
 ## Board notes
 
@@ -222,7 +222,7 @@ One JSON object per line, on the board's USB port. Other lines, such as boot and
 | Direction | Message |
 |---|---|
 | Daemon to board | `state` once a second (sessions, local time, history of the watched session, pet counts), `ack` after an answer |
-| Board to daemon | `hello`, `act` (allow, deny, deny-retry, deny-explain, answer, open, seen, and `pet-*`), `watch`, `touch` (logged) |
+| Board to daemon | `hello`, `act` (allow, deny, answer, open, seen, and `pet-*`), `watch`, `touch` (logged) |
 | Testing, via `ttycatd.py` | `shot PATH` saves the real frame as a PNG; `tap X Y`, `swipe L\|R\|U\|D`, `goto SCREEN` (`queue`, `overview`, `tab:N`, `ask:ID`, `detail:ID`, `pet`, `game:bot`, `pet:heart`, `pet:reward`, `pet:level`, `pet:sleep`); in demo, `scene NAME` (including `question`, `questions`, `pet-hungry`, `pet-mess`, `pet-sick`, `pet-bored`, `pet-tired`, `pet-asleep`, `pet-lv5`) |
 
 `tap` goes through the same code as a finger, so anything on this Mac running as you can answer prompts the board is showing. The same is true of anything that can type into your terminal. The hook socket, `~/.ttycat/hook.sock`, is only readable by you.
