@@ -48,6 +48,8 @@ final class TTYCatModel: ObservableObject {
   private var seenNeeds: Set<String>?
   private var seenPetEv: Int?
   private var seenPetTotal: Int?
+  private var seenPetLevel: Int?
+  private var pendingHello: PetEvent.Kind?  // a welcome back, saved for when the Pet page is open to give it
   private var petTimer: Timer?
   var handsOffUntil = Date.distantPast
   var lastPanelClick = Date.distantPast
@@ -289,8 +291,8 @@ final class TTYCatModel: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { _ = Ctl.request(["t": "app-act", "a": "seen", "id": id]) }
       }
       open(row)
-    case .allowOrDeny(let action):
-      sendAlertAnswer(id: id, rev: rev, action: action, picks: nil, delivered: delivered)
+    case .deny:
+      sendAlertAnswer(id: id, rev: rev, action: "deny", picks: nil, delivered: delivered)
     case .choose(let number):
       sendAlertAnswer(id: id, rev: rev, action: "answer", picks: [["o": [number], "t": ""]], delivered: delivered)
     case .type(let text):
@@ -400,14 +402,19 @@ final class TTYCatModel: ObservableObject {
   private func notePetEvents() {
     guard let pet = status?.pet else { return }
     if let seen = seenPetEv, pet.ev != seen, let kind = PetEvent.Kind(rawValue: pet.evk ?? "") {
-      petEvent = PetEvent(kind: kind, at: Date())
+      if kind.isHello, page != .pet {
+        pendingHello = kind
+      } else {
+        petEvent = PetEvent(kind: kind, at: Date())
+      }
     }
     seenPetEv = pet.ev
-    if let seen = seenPetTotal, pet.total > seen {
-      let before = PetInfo.level(total: seen)
-      petEvent = PetEvent(kind: .reward, at: Date(), turns: pet.total - seen, levelUp: pet.level > before)
+    // A level can come from age alone, with no turn to show.
+    if let total = seenPetTotal, let level = seenPetLevel, pet.total > total || pet.level > level {
+      petEvent = PetEvent(kind: .reward, at: Date(), turns: max(0, pet.total - total), levelUp: pet.level > level)
     }
     seenPetTotal = pet.total
+    seenPetLevel = pet.level
   }
 
   /// Quicker while you're looking at it, so a tap on the board shows here at once.
@@ -415,6 +422,10 @@ final class TTYCatModel: ObservableObject {
     petTimer?.invalidate()
     petTimer = nil
     guard open, StatusPanel.shared != nil else { return }  // a --preview shows only its sample data
+    if let kind = pendingHello {
+      pendingHello = nil
+      petEvent = PetEvent(kind: kind, at: Date())
+    }
     let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
       MainActor.assumeIsolated { self?.poll() }
     }
@@ -424,6 +435,7 @@ final class TTYCatModel: ObservableObject {
 
   /// What's waiting on you comes before the pet whenever the panel opens.
   func panelOpening() {
+    DispatchQueue.global(qos: .userInitiated).async { _ = Ctl.request(["t": "app-act", "a": "pet-here", "id": ""]) }
     if page == .pet, needs > 0 {
       handsOffUntil = Date().addingTimeInterval(HandsOff.afterInterruption)
       page = .agents

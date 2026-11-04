@@ -215,14 +215,6 @@ private struct Run {
 }
 
 @Suite struct Buttons {
-  @Test func allowOnlyWhenAllOfItShows() {
-    #expect(row("blocked", ask: "approve", body: "npm test").allowsFromBanner)
-    #expect(!row("blocked", ask: "approve", body: "npm test\nrm -rf /").allowsFromBanner)
-    #expect(!row("blocked", ask: "approve", body: String(repeating: "x", count: 81)).allowsFromBanner)
-    #expect(!row("blocked", ask: "approve", body: "").allowsFromBanner)
-    #expect(!row("blocked", ask: "terminal", body: "npm test").allowsFromBanner)
-  }
-
   @Test func onlyOneSingleAnswerQuestionFitsOnButtons() {
     let one = Question(q: "Which?", m: false, o: [])
     let many = Question(q: "Which?", m: true, o: [])
@@ -237,8 +229,8 @@ private struct Run {
 
   @Test func repliesMeanWhatTheySay() {
     let from = AlertReply.from
-    #expect(from("allow", nil, true) == .allowOrDeny("allow"))
-    #expect(from("deny", nil, true) == .allowOrDeny("deny"))
+    #expect(from("allow", nil, true) == .nothing)  // never from a notification
+    #expect(from("deny", nil, true) == .deny)
     #expect(from("opt-2", nil, true) == .choose(2))
     #expect(from("type", " hi ", true) == .type("hi"))
     #expect(from("type", "   ", true) == .nothing)

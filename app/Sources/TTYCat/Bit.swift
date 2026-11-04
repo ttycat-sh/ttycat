@@ -28,7 +28,7 @@ private let bodyRows = [
 ]
 
 // `tick` moves the hands and the laptop's light; `seed` keeps several from typing in step.
-func bitCells(_ pose: BitPose, tick: Int = 0, seed: Int = 0, level: Int = 0) -> [BitCell] {
+func bitCells(_ pose: BitPose, tick: Int = 0, seed: Int = 0, level: Int = 0, birthday: Bool = false, scarf: Bool = false) -> [BitCell] {
   var out: [BitCell] = []
   func put(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ ink: Ink) { out.append(BitCell(x: x, y: y, w: w, h: h, ink: ink)) }
 
@@ -121,7 +121,15 @@ func bitCells(_ pose: BitPose, tick: Int = 0, seed: Int = 0, level: Int = 0) -> 
     put(14, ry(5), 2, 3, .glint)
     if pose == .idle || pose == .blink { put(12, ry(9), 2, 1, .glint) }  // its microphone
   }
-  if level >= 8 {
+  if scarf && pose != .work && pose != .nap {  // what it keeps from its first 100 days
+    put(1, ry(10), 14, 1, .bulb)
+    put(10, ry(10) + 1, 2, 1, .bulb)
+  }
+  if birthday {  // a party hat, for the day, in place of whatever it has earned up there
+    put(5, ry(1) - 1, 6, 1, .gold)
+    put(6, ry(1) - 2, 4, 1, .glint)
+    put(7, ry(1) - 3, 2, 1, .gold)
+  } else if level >= 8 {
     put(5, ry(1) - 1, 6, 1, .gold)
     put(5, ry(1) - 2, 1, 1, .gold)
     put(7, ry(1) - 2, 2, 1, .gold)
@@ -139,7 +147,8 @@ struct BitView: View {
   var seed = 0
   var dimmed = false
   var level = 0
-  var sick = false
+  var birthday = false
+  var scarf = false
   var headroom = 0  // rows above it, for an antenna or a crown
 
   var body: some View {
@@ -148,7 +157,7 @@ struct BitView: View {
       let tick = Int(context.date.timeIntervalSinceReferenceDate / 0.17)
       let shown: BitPose = pose == .idle && tick % 30 == 0 ? .blink : pose
       Canvas { ctx, _ in
-        for c in bitCells(shown, tick: tick, seed: seed, level: level) {
+        for c in bitCells(shown, tick: tick, seed: seed, level: level, birthday: birthday, scarf: scarf) {
           let r = CGRect(
             x: CGFloat(c.x) * dot, y: CGFloat(c.y + headroom) * dot, width: CGFloat(c.w) * dot, height: CGFloat(c.h) * dot)
           ctx.fill(Path(r), with: .color(color(c.ink)))
@@ -161,8 +170,8 @@ struct BitView: View {
 
   private func color(_ ink: Ink) -> Color {
     switch ink {
-    case .body: return sick ? Color(hex: 0xA8B04A) : dimmed ? Palette.muted : Palette.bitBody
-    case .shade: return sick ? Color(hex: 0x737A2E) : dimmed ? Palette.muted2 : Palette.bitShade
+    case .body: return dimmed ? Palette.muted : Palette.bitBody
+    case .shade: return dimmed ? Palette.muted2 : Palette.bitShade
     case .eye: return Palette.ink
     case .glint: return Palette.white
     case .laptop: return Palette.laptop

@@ -151,6 +151,7 @@ static void parse_state_msg(const cJSON *j) {
   }
   const cJSON *pet = cJSON_GetObjectItemCaseSensitive(j, "pet");
   next.pet_total = get_int(pet, "total", 0);
+  next.pet_grown = get_int(pet, "grown", next.pet_total);
   next.pet_today = get_int(pet, "today", 0);
   next.pet_food = (uint8_t)get_int(pet, "food", 0);
   next.pet_fun = (uint8_t)get_int(pet, "fun", 0);
@@ -163,13 +164,14 @@ static void parse_state_msg(const cJSON *j) {
   char evk[10] = "";
   copy_str(evk, sizeof(evk), pet, "evk");
   next.pet_evk = !strcmp(evk, "heart") ? PET_HEART : !strcmp(evk, "eat") ? PET_EAT : !strcmp(evk, "sparkle") ? PET_SPARKLE
-                 : !strcmp(evk, "heal") ? PET_HEAL : -1;
-  next.pet_sick = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(pet, "sick"));
+                 : !strcmp(evk, "rested") ? PET_RESTED : !strcmp(evk, "welcome") ? PET_WELCOME
+                 : !strcmp(evk, "birthday") ? PET_BIRTHDAY : -1;
+  next.pet_birthday = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(pet, "birthday"));
   next.pet_asleep = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(pet, "asleep"));
   copy_str(next.pet_name, sizeof(next.pet_name), pet, "name");
   char need[8];
   copy_str(need, sizeof(need), pet, "need");
-  next.pet_need = !strcmp(need, "sick") ? PET_NEED_SICK : !strcmp(need, "food") ? PET_NEED_FOOD
+  next.pet_need = !strcmp(need, "food") ? PET_NEED_FOOD
                 : !strcmp(need, "mess") ? PET_NEED_MESS : !strcmp(need, "tired") ? PET_NEED_TIRED
                 : !strcmp(need, "bored") ? PET_NEED_BORED : PET_NEED_NONE;
   // Left out when both are the default: an older daemon, or nothing chosen.

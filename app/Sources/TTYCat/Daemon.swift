@@ -60,15 +60,16 @@ struct PetInfo: Decodable {
   var energy: Int
   var snacks: Int
   var age: Int
-  var sick: Bool
   var asleep: Bool
+  var birthday = false
   var poops = 0
   var best = 0
-  var need = ""  // the one thing it would ask for: sick, food, mess, tired or bored
+  var need = ""  // the one thing it would ask for: food, mess, tired or bored
   var ev: Int?     // numbers the latest care, from here or the board, so each is shown once
-  var evk: String? // what it looks like: eat, heart, sparkle, heal, or empty
+  var evk: String? // what it looks like: eat, heart, sparkle, rested, welcome, birthday, or empty
+  var grown: Int?  // what its level comes from: time, and tokens
 
-  var level: Int { Self.level(total: total) }
+  var level: Int { Self.level(total: grown ?? total) }
 
   // The same curve as firmware/main/pet.c.
   static func level(total: Int) -> Int {

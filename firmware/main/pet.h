@@ -3,17 +3,19 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef enum { PET_NEED_NONE, PET_NEED_SICK, PET_NEED_FOOD, PET_NEED_MESS, PET_NEED_TIRED, PET_NEED_BORED } pet_need_t;
-typedef enum { PET_HEART, PET_EAT, PET_SPARKLE, PET_HEAL } pet_reaction_t;
+typedef enum { PET_NEED_NONE, PET_NEED_FOOD, PET_NEED_MESS, PET_NEED_TIRED, PET_NEED_BORED } pet_need_t;
+typedef enum { PET_HEART, PET_EAT, PET_SPARKLE, PET_RESTED, PET_WELCOME, PET_BIRTHDAY } pet_reaction_t;
 
 typedef struct {
-  bool asleep, sick;
+  bool asleep;
+  bool birthday;    // a party hat, for the day
+  bool scarf;       // what it keeps from its first 100 days
   int level, poops;
   int working;      // agents at work: it works too, and any others get a small one each
   pet_need_t need;  // shown in a bubble; anything but NONE also makes it sad
 } pet_look_t;
 
-// Level 2 at 3 finished turns, 3 at 12, 4 at 27, 5 at 48.
+// From what the daemon says it has grown. Level 2 at 3, 3 at 12, 4 at 27, 5 at 48.
 int pet_level(int32_t total);
 // How far through this level, out of `of`.
 int pet_progress(int32_t total, int of);

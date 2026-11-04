@@ -11,7 +11,7 @@
 #define QUESTION_MAX 4     // in one ask
 #define OPTION_MAX 4       // in one question
 #define TYPED_MAX 200      // a typed answer
-#define FW_VERSION "0.8.1"
+#define FW_VERSION "0.9.1"
 
 // In the order the queue sorts them.
 typedef enum { ST_BLOCKED, ST_ERROR, ST_DONE, ST_WORKING, ST_IDLE } state_t;
@@ -59,8 +59,9 @@ typedef struct {
   hist_item_t hist[HIST_ITEMS];
   int hist_n;
   int32_t pet_total, pet_today;  // turns agents have finished
+  int32_t pet_grown;             // what its level comes from: time, and tokens
   uint8_t pet_food, pet_fun, pet_energy, pet_poops, pet_need;  // pet_need_t
-  bool pet_sick, pet_asleep;
+  bool pet_asleep, pet_birthday;
   int16_t pet_snacks, pet_age, pet_best;
   int32_t pet_ev;  // numbers the latest care, from here or the Mac
   int8_t pet_evk;  // what it looks like: a pet_reaction_t, or -1 for nothing

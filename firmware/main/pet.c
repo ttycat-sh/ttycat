@@ -10,15 +10,12 @@
 
 #define ORANGE accent_color
 #define SHADE bit_shade
-#define SICK_BODY RGB(0xA8B04A)
-#define SICK_SHADE RGB(0x737A2E)
 #define INK RGB(0x0B0B0B)
 #define WHITE RGB(0xFFFFFF)
 #define GREEN RGB(0x3FD38A)
 #define MUTED RGB(0x9A9A9A)
 #define GOLD RGB(0xFFD34D)
 #define BROWN RGB(0x8A5A2B)
-#define RED RGB(0xE5484D)
 #define LAPTOP RGB(0xC4C4C4)
 #define LAPTOP_EDGE RGB(0x7A7A7A)
 
@@ -58,7 +55,6 @@ typedef const char *const icon_t[6];
 static icon_t HEART = {".oo.oo.", "ooooooo", "ooooooo", ".ooooo.", "..ooo..", "...o..."};
 static icon_t FOOD = {"...o...", ".oo.oo.", "ooooooo", "ooooooo", ".ooooo.", "..ooo.."};
 static icon_t POOP = {"...o...", "..ooo..", ".ooooo.", ".ooooo.", "ooooooo", "ooooooo"};
-static icon_t CROSS = {"..ooo..", "..ooo..", "ooooooo", "ooooooo", "..ooo..", "..ooo.."};
 static icon_t ZZZ = {"ooooo..", "...o...", "..o....", ".o.....", "ooooo..", "......."};
 static icon_t BORED = {".oooo..", "o....o.", "...oo..", "..o....", ".......", "..o...."};
 static icon_t SPARK = {"...o...", "..o.o..", ".o...o.", "..o.o..", "...o...", "......."};
@@ -70,7 +66,7 @@ static int64_t mode_until, step_at, hop_start, eat_start;
 static int hops;
 static int64_t blink_at, blink_end, look_until;
 static int look;
-static int64_t react_start, plus_start, banner_until;
+static int64_t react_start, plus_start, banner_until, hello_until;
 static pet_reaction_t react_kind;
 static int plus_n;
 static int top_y = GROUND - 14 * D;
@@ -123,6 +119,10 @@ void pet_react(int64_t now, pet_reaction_t what) {
     mode = EAT;
     eat_start = now;
     react_start = 0;
+  } else if (what == PET_RESTED || what == PET_WELCOME || what == PET_BIRTHDAY) {  // rested, and glad to see you
+    start_hops(now, what == PET_RESTED ? 3 : 5);
+    hello_until = now + 4000;
+    react_start = 0;  // its hops and the words say it
   } else {
     start_hops(now, 2);
   }
@@ -207,8 +207,7 @@ static void advance(int64_t now, const pet_look_t *look_in) {
     return;
   }
   if (now >= mode_until) {
-    if (look_in->sick) mode_until = now + 3000;  // too ill to wander
-    else choose_next(now, sad);
+    choose_next(now, sad);
   }
   if (now >= look_until) {
     look = (int)rnd(3) - 1;
@@ -222,9 +221,9 @@ static void draw_poops(int count) {
 }
 
 static void draw_bubble(int head_y, pet_need_t need) {
-  icon_t *what = need == PET_NEED_SICK ? &CROSS : need == PET_NEED_FOOD ? &FOOD : need == PET_NEED_MESS ? &POOP
+  icon_t *what = need == PET_NEED_FOOD ? &FOOD : need == PET_NEED_MESS ? &POOP
                : need == PET_NEED_TIRED ? &ZZZ : &BORED;
-  color_t c = need == PET_NEED_SICK ? RED : need == PET_NEED_FOOD ? ORANGE : need == PET_NEED_MESS ? BROWN : INK;
+  color_t c = need == PET_NEED_FOOD ? ORANGE : need == PET_NEED_MESS ? BROWN : INK;
   int bx = x + COLS * D - 8;
   if (bx + 22 > 238) bx = x - 14;
   int by = head_y - 18;
@@ -273,9 +272,9 @@ void pet_draw(int64_t now, const pet_look_t *p) {
   draw_helpers(now, p->asleep ? p->working : p->working - 1);
 
   bool napping = mode == NAP, hopping = mode == HOP, walking = mode == WALK, eating = mode == EAT, working = mode == WORK;
-  bool joyful = hopping || now < banner_until;
+  bool joyful = hopping || now < banner_until || now < hello_until;
   bool sad = !joyful && !eating && p->need != PET_NEED_NONE;
-  color_t body = p->sick ? SICK_BODY : bit_body, shade = p->sick ? SICK_SHADE : SHADE;
+  color_t body = bit_body, shade = SHADE;
 
   int lift = 0;
   if (hopping) {
@@ -382,7 +381,15 @@ void pet_draw(int64_t now, const pet_look_t *p) {
     block(14, ry[5], 2, 3, WHITE);
     if (!joyful && !napping && !sad && !eating && !working) block(12, ry[9], 2, 1, WHITE);
   }
-  if (p->level >= 8) {
+  if (p->scarf && !working && !napping) {  // what it keeps from its first 100 days
+    block(1, ry[10], 14, 1, GREEN);
+    block(10, ry[10] + D, 2, 1, GREEN);
+  }
+  if (p->birthday) {  // a party hat, for the day, in place of whatever it has earned up there
+    block(5, ry[1] - D, 6, 1, GOLD);
+    block(6, ry[1] - 2 * D, 4, 1, WHITE);
+    block(7, ry[1] - 3 * D, 2, 1, GOLD);
+  } else if (p->level >= 8) {
     block(5, ry[1] - D, 6, 1, GOLD);
     block(5, ry[1] - 2 * D, 1, 1, GOLD);
     block(7, ry[1] - 2 * D, 2, 1, GOLD);
@@ -420,8 +427,7 @@ void pet_draw(int64_t now, const pet_look_t *p) {
     int t = (int)(now - react_start);
     int hy = top_y - 14 - t * 16 / REACT_MS;
     if (hy > 18) {
-      if (react_kind == PET_HEAL) icon(CROSS, cx - 7, hy, 2, GREEN);
-      else if (react_kind == PET_SPARKLE) {
+      if (react_kind == PET_SPARKLE) {
         icon(SPARK, cx - 26, hy + 8, 2, WHITE);
         icon(SPARK, cx + 12, hy, 2, WHITE);
       } else icon(HEART, cx - 7, hy, 2, WHITE);
@@ -438,6 +444,8 @@ void pet_draw(int64_t now, const pet_look_t *p) {
     char b[16];
     snprintf(b, sizeof(b), "Level %d", p->level);
     gfx_caps(&sk11, 6, 22, GREEN, b, 1);
+  } else if (now < hello_until) {
+    gfx_caps(&sk11, 6, 22, GREEN, react_kind == PET_BIRTHDAY ? "Happy birthday" : "Welcome back", 1);
   } else if (p->need != PET_NEED_NONE && !napping && !hopping && !eating) {
     draw_bubble(y0, p->need);
   }

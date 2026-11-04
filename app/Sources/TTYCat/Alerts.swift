@@ -91,7 +91,7 @@ struct AlertPlanner {
 
 /// What a click on a notification means.
 enum AlertReply: Equatable {
-  case allowOrDeny(String)
+  case deny
   case choose(Int)
   case type(String)
   case open
@@ -101,7 +101,7 @@ enum AlertReply: Equatable {
   static func from(action: String, typed: String?, answerable: Bool) -> AlertReply {
     switch action {
     case UNNotificationDefaultActionIdentifier: return answerable ? .show : .open
-    case "allow", "deny": return .allowOrDeny(action)
+    case "deny": return .deny
     case "open": return .open
     case "type":
       let text = (typed ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -114,13 +114,6 @@ enum AlertReply: Equatable {
 }
 
 extension AgentRow {
-  /// Allow is offered only where all of what's being allowed shows in the banner.
-  /// Anything longer has to be read in the panel, as on the board.
-  var allowsFromBanner: Bool {
-    guard ask == "approve", let body, !body.isEmpty else { return false }
-    return !body.contains("\n") && body.count <= 80
-  }
-
   /// One question with one answer fits on buttons. Several, or pick-any, need the panel.
   var singleChoice: Question? {
     guard ask == "choice", let qs, qs.count == 1, !qs[0].m else { return nil }
@@ -182,7 +175,7 @@ final class Alerts: NSObject, UNUserNotificationCenterDelegate, @unchecked Senda
   }
 
   private static let fixed: Set<UNNotificationCategory> = [
-    category("approve", [action("allow", "Allow"), action("deny", "Deny", .destructive)]),
+    // Never Allow: that's for the panel or the board, where all of it can be read.
     category("read-first", [action("deny", "Deny", .destructive)]),
     category("terminal", [action("open", "Open terminal")]),
     category("panel", []),
@@ -216,8 +209,8 @@ final class Alerts: NSObject, UNUserNotificationCenterDelegate, @unchecked Senda
 
     var category = "panel"
     if row.ask == "approve" {
-      category = row.allowsFromBanner ? "approve" : "read-first"
-      if !row.allowsFromBanner { content.subtitle += " \u{B7} click to read it all" }
+      category = "read-first"
+      content.subtitle += " \u{B7} click to answer"
     } else if row.ask != "choice" {
       category = "terminal"
     }

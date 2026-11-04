@@ -206,7 +206,6 @@ struct PixelMap: View {
 }
 
 private let brown = Color(hex: 0x8A5A2B)
-private let red = Color(hex: 0xE5484D)
 
 private enum BugSprite {
   static let a = ["..........", "..w....w..", "...w..w...", "..gggggg..", "w.gwggwg.w", ".wggggggw.", "..gggggg..", "w.gggggg.w", ".w..gg..w.", ".........."]
@@ -318,7 +317,10 @@ private struct PressCatcher: NSViewRepresentable {
 
 /// Care, or finished turns: shown here and on the board alike. Timings are firmware/main/pet.c's.
 struct PetEvent: Equatable {
-  enum Kind: String { case eat, heart, sparkle, heal, reward }
+  enum Kind: String {
+    case eat, heart, sparkle, rested, welcome, birthday, reward
+    var isHello: Bool { self == .rested || self == .welcome || self == .birthday }
+  }
   let kind: Kind
   let at: Date
   var turns = 0
@@ -330,11 +332,19 @@ struct PetEvent: Equatable {
   static let plusFor: TimeInterval = 1.8
   static let bannerFor: TimeInterval = 4
 
-  var hops: Int { kind == .reward ? min(max(turns, 1), 5) : 2 }
+  var hops: Int {
+    switch kind {
+    case .reward: return min(max(turns, 1), 5)
+    case .rested: return 3
+    case .welcome, .birthday: return 5
+    default: return 2
+    }
+  }
   var lasts: TimeInterval {
     switch kind {
     case .eat: return Self.eatFor
     case .reward: return levelUp ? Self.bannerFor : max(Self.plusFor, Double(hops) * Self.hopFor)
+    case .rested, .welcome, .birthday: return Self.bannerFor
     default: return Self.floatFor
     }
   }
@@ -353,7 +363,7 @@ enum PetLook {
       let age = now.timeIntervalSince(event.at)
       if event.kind == .eat, age < PetEvent.eatFor { return .eat }
       if event.kind != .eat, age < Double(event.hops) * PetEvent.hopFor { return .happy }
-      if event.levelUp, age < PetEvent.bannerFor { return .happy }
+      if event.levelUp || event.kind.isHello, age < PetEvent.bannerFor { return .happy }
     }
     if asleep(pet: pet, working: working, boardDim: boardDim) { return .nap }
     if working > 0 { return .work }
@@ -469,7 +479,7 @@ struct PetPage: View {
     }
     .padding(8)
     .frame(height: 112)
-    .pixelBox(Palette.card, border: pet.sick ? red : Palette.line)
+    .pixelBox(Palette.card, border: Palette.line)
   }
 
   private func mood(_ pet: PetInfo) -> String {
@@ -484,12 +494,14 @@ struct PetPage: View {
     let age = event.map { now.timeIntervalSince($0.at) } ?? 0
     let lift = PetLook.lift(event: event, now: now)
     return ZStack(alignment: .topTrailing) {
-      BitView(pose: pose, dot: 5, level: pet.level, sick: pet.sick, headroom: 3)
+      BitView(pose: pose, dot: 5, level: pet.level, birthday: pet.birthday, scarf: pet.age >= 100, headroom: 3)
         .offset(y: CGFloat(-lift) * 5)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .padding(.bottom, 4)
       if let event, event.levelUp, age < PetEvent.bannerFor {
         Caps("Level \(pet.level)", color: Palette.green).frame(maxWidth: .infinity, alignment: .topLeading).padding(4)
+      } else if let event, event.kind.isHello, event.kind != .birthday, age < PetEvent.bannerFor {  // the mood says that one
+        Caps("Welcome back", color: Palette.green).frame(maxWidth: .infinity, alignment: .topLeading).padding(4)
       } else if pose == .nap {
         zees(now: now)
       } else if pose == .work {
@@ -508,14 +520,11 @@ struct PetPage: View {
     case .eat:
       PixelMap(rows: PixelMap.food, dot: age < 0.47 ? 3 : age < 0.93 ? 2 : 1, color: Palette.green)
         .frame(maxWidth: .infinity, alignment: .center).offset(y: 2)
+    case .rested, .welcome, .birthday:
+      EmptyView()  // its hops and the words say it
     case .heart:
       if age < PetEvent.floatFor {
         PixelMap(rows: PixelMap.heart, dot: 2, color: Palette.white)
-          .frame(maxWidth: .infinity, alignment: .center).offset(y: 12 - 12 * t)
-      }
-    case .heal:
-      if age < PetEvent.floatFor {
-        PixelMap(rows: PixelMap.cross, dot: 2, color: Palette.green)
           .frame(maxWidth: .infinity, alignment: .center).offset(y: 12 - 12 * t)
       }
     case .sparkle:
@@ -527,7 +536,7 @@ struct PetPage: View {
         .frame(maxWidth: .infinity, alignment: .center).offset(y: 16 - 10 * t)
       }
     case .reward:
-      if age < PetEvent.plusFor {
+      if age < PetEvent.plusFor, event.turns > 0 {
         Text("+\(event.turns)").font(Pixel.body).foregroundStyle(Palette.green).padding(.trailing, 6)
           .offset(y: 8 - 8 * min(1, age / PetEvent.plusFor))
       }
@@ -563,7 +572,6 @@ struct PetPage: View {
   private func wantsBubble(_ pet: PetInfo) -> AnyView? {
     let picture: ([String], Color)?
     switch pet.need {
-    case "sick": picture = (PixelMap.cross, red)
     case "food": picture = (PixelMap.food, Palette.orange)
     case "mess": picture = (PixelMap.poop, brown)
     case "tired": picture = (PixelMap.zzz, Palette.muted)
@@ -584,14 +592,8 @@ struct PetPage: View {
         ChoiceButton(title: "Feed", icon: PixelIcon.food, loud: pet.need == "food", enabled: awake) {
           m.petAct("pet-feed")
         }
-        if pet.sick {
-          ChoiceButton(title: "Heal", icon: PixelIcon.plus, loud: true, enabled: awake) {
-            m.petAct("pet-heal")
-          }
-        } else {
-          ChoiceButton(title: "Hunt bugs", icon: PixelIcon.bug, loud: pet.need == "bored", enabled: awake && m.asks.isEmpty) {
-            m.startHunt()
-          }
+        ChoiceButton(title: "Hunt bugs", icon: PixelIcon.bug, loud: pet.need == "bored", enabled: awake && m.asks.isEmpty) {
+          m.startHunt()
         }
       }
       HStack(spacing: 4) {
@@ -612,12 +614,11 @@ extension PetInfo {
   var mood: String {
     if asleep { return "asleep" }
     switch need {
-    case "sick": return "feeling ill"
     case "food": return "hungry"
     case "mess": return poops == 1 ? "made a mess" : "made \(poops) messes"
     case "tired": return "tired"
     case "bored": return "bored"
-    default: return "doing fine"
+    default: return birthday ? "happy birthday" : "doing fine"
     }
   }
 }

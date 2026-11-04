@@ -116,19 +116,41 @@ private func row(_ s: String, id: String = "a", rev: String? = nil) -> AgentRow 
   #expect(HandsOff.needs(in: [row("error")]).count == 1)
 }
 
+@Test func levelComesFromUseAndAge() {
+  var pet = PetInfo(name: "Bit", total: 2, today: 0, food: 50, fun: 50, energy: 50, snacks: 0, age: 0, asleep: false)
+  #expect(pet.level == 1)
+  pet.grown = 12
+  #expect(pet.level == 3)
+}
+
+@Test func comingBackFromADayOffIsAHappyHello() {
+  let clock = Date(timeIntervalSinceReferenceDate: 1_000_000)
+  let pet = PetInfo(name: "Bit", total: 0, today: 0, food: 50, fun: 50, energy: 50, snacks: 0, age: 0, asleep: false)
+  let hello = PetEvent(kind: .rested, at: clock.addingTimeInterval(-3.5))
+  #expect(hello.kind.isHello)
+  #expect(PetEvent(kind: .rested, at: clock).hops == 3)
+  #expect(PetEvent(kind: .welcome, at: clock).hops == 5)
+  #expect(PetLook.pose(pet: pet, working: 0, boardDim: false, event: hello, now: clock) == .happy)
+  #expect(!PetEvent(kind: .heart, at: clock).kind.isHello)
+}
+
 @Test func moodSaysWhatTheBubbleMeans() {
-  var pet = PetInfo(name: "Bit", total: 0, today: 0, food: 50, fun: 50, energy: 50, snacks: 0, age: 0, sick: false, asleep: false)
+  var pet = PetInfo(name: "Bit", total: 0, today: 0, food: 50, fun: 50, energy: 50, snacks: 0, age: 0, asleep: false)
   #expect(pet.mood == "doing fine")
   pet.need = "mess"
   pet.poops = 2
   #expect(pet.mood == "made 2 messes")
   pet.asleep = true
   #expect(pet.mood == "asleep")
+  pet.asleep = false
+  pet.need = ""
+  pet.birthday = true
+  #expect(pet.mood == "happy birthday")
 }
 
 // The board's rules for how Bit looks: firmware/main/pet.c.
 private func pet(need: String = "", asleep: Bool = false) -> PetInfo {
-  var p = PetInfo(name: "Bit", total: 30, today: 2, food: 50, fun: 50, energy: 50, snacks: 1, age: 3, sick: false, asleep: asleep)
+  var p = PetInfo(name: "Bit", total: 30, today: 2, food: 50, fun: 50, energy: 50, snacks: 1, age: 3, asleep: asleep)
   p.need = need
   return p
 }

@@ -46,7 +46,7 @@ app/build.sh install    # also copies it to /Applications and starts it
 
 - **Notifications** say when an agent needs you, and when one finishes after 30 s or more of work. Clicking one opens the panel on that prompt, or the terminal if there's nothing to answer there.
   - A prompt waits 3 s, so one you answer straight away never shows a banner. Nothing is posted for the agent whose pane is focused in your terminal while that terminal is in front and you've touched the Mac in the last 2 minutes, nor while the panel is open. A prompt is posted when you move away; a finished turn isn't.
-  - Allow is on the notification only if the whole command fits: one line of up to 80 characters. Otherwise it offers Deny, and a click opens the panel to read it. A single question with one answer gets its options and "Type an answer" as buttons. Several questions, or pick-any, open the panel.
+  - Allow is never on a notification. A prompt's notification offers Deny, and a click opens the panel to read and answer it. A single question with one answer gets its options and "Type an answer" as buttons. Several questions, or pick-any, open the panel.
   - Buttons don't work from a locked screen, and a click within 600 ms of a notification appearing doesn't count. A notification goes away once its prompt is settled anywhere, and when the app quits.
   - Commands, questions and the agent's last words appear in Notification Center, so they can be seen by anyone looking at the screen. macOS's "Show previews" setting hides them.
   - The app asks macOS for permission only when you click **Turn on notifications** in Setup. If it was refused, it's System Settings > Notifications > ttycat.
@@ -59,7 +59,7 @@ app/build.sh install    # also copies it to /Applications and starts it
 - **The panel is its own window, not SwiftUI's `MenuBarExtra`,** which grows its window but never shrinks it (`StatusPanel.swift`). Its top stays under the icon, its height follows the page, and a page too tall for the screen scrolls under the tabs. It takes the keyboard without making this the active app, like Spotlight, so what you were in stays in front. A click elsewhere, Esc, or switching app closes it. Its content is built new on each open, so a prompt's buttons always get their full delay.
 - **One daemon at a time.** A second one exits with status 3. If one's already running, from a terminal say, the app uses it, and leaves it running when it quits. One the app started stops with it.
 - Plain `@State` doesn't build here: in current SDKs it's a macro, and its plugin comes only with Xcode. Panel.swift has a small stand-in.
-- To check the look without opening the menu: `"app/build/ttycat.app/Contents/MacOS/ttycat" --preview out.png needs` (`busy`, `needs`, `diff`, `long`, `question`, `questions`, `terminal`, `detail`, `done`, `idle`, `setup`, `setup-new`, `setup-denied`, `setup-short`, `welcome`, `noboard`, `pet`, `pet-asleep`, `pet-sick`, `pet-needs`, `pet-hunt`, `pet-score`, `fw-update`, `fw-write`, `fw-back`, `fw-fail`, `fw-unknown`, `stopped`, `unplugged`).
+- To check the look without opening the menu: `"app/build/ttycat.app/Contents/MacOS/ttycat" --preview out.png needs` (`busy`, `needs`, `diff`, `long`, `question`, `questions`, `terminal`, `detail`, `done`, `idle`, `setup`, `setup-new`, `setup-denied`, `setup-short`, `welcome`, `noboard`, `pet`, `pet-asleep`, `pet-needs`, `pet-hunt`, `pet-score`, `fw-update`, `fw-write`, `fw-back`, `fw-fail`, `fw-unknown`, `stopped`, `unplugged`).
 
 ## Where agents come from
 
@@ -109,7 +109,7 @@ Stop the daemon first: it holds the serial port.
 |---|---|
 | **Queue** | Tap a tab or swipe left and right to filter by agent. Swipe up and down for more rows. The hero card is the most urgent session. Tap it, or a row, to open that session. A session on another machine shows that machine's name. |
 | **Overview** | The grid icon, top left. One card per agent. **Next** goes to whatever needs you first. |
-| **Approval** | Allow or Deny within 60 s. Deny ends the turn, like No in the terminal. If the text doesn't fit, it shows `...`: swipe up to read all of it. |
+| **Approval** | Allow or Deny. Deny ends the turn, like No in the terminal. If the text doesn't fit, it shows `...`: swipe up to read all of it. |
 | **Question** | When Claude asks a question: tap an option, or **Type an answer** for the keyboard, then **Send**. If it's several questions, **Next** moves through them. Multi-select allows several picks. Swipe up to read everything, including each option's description. **Later** steps away and keeps your picks. |
 | **Needs you** | A prompt the board can't answer. **Open on Mac** focuses that pane in herdr and brings Ghostty forward. The button shows **Opening**, then a green **Look at Mac**. |
 | **Detail** | Recent events for a session, and the chime's mute switch. Lines too long to fit scroll by themselves. Swipe right to go back. |
@@ -126,16 +126,19 @@ Bit lives on the home screen, which has its care buttons. To go there straight a
 | **Rest** | about 20 hours | It sleeps from 22:00 to 07:00. **Sleep** and **Wake up** override that: a nap lasts until it's rested, up to 3 hours, and waking at night buys 30 minutes. |
 | **Cleaning** | a mess every 5 awake hours, 3 at most | **Clean** |
 
-If it stays empty of food, or at 3 messes, for 6 hours it gets sick and turns green. **Heal** cures it. A bubble over its head shows what it wants most.
+It's always healthy. If food runs out or the messes pile up, it only looks sad until you help. A bubble over its head shows what it wants most.
 
-It grows on those turns too: level 2 takes 3, level 3 takes 12, level 4 takes 27, and so on. It earns a pilot's headset at level 3, an antenna at 5 and a crown at 8.
+It grows with time and use, and you can't race it. Each day counts 1, whether or not the daemon was running. Your agents' tokens that day add up to 2 more, quickly at first and then less and less: 100k tokens add 0.79, 1M add 1.99, and past that almost nothing. Only your 5 biggest days of a week count, so working through the weekend gains nothing. That makes the crown 61 days away at best. Level 2 takes 3, level 3 takes 12, level 4 takes 27, and so on. It earns a pilot's headset at level 3, an antenna at 5 and a crown at 8.
 
 - **It never dies, and it never beeps.** The chime only ever means an agent needs you.
+- **Time brings keepsakes.** It wears a party hat on the first of every month, its birthday, and gets a scarf to keep at 100 days old. Nothing can speed these up, they don't affect growth, and missing a birthday costs nothing.
 - **Your answers don't feed it.** A turn earns the same snack whether it ran to the end or you denied it, so nothing rewards saying yes.
 - **Agents come first.** A new prompt or error leaves the home screen at once, and a new prompt also ends a game. Taps then don't count until they've stopped for 0.8 s, at least 1.5 s from the interruption, so someone mid-game can't hit Allow by accident.
-- **Time away doesn't count.** At most 12 hours pass while the daemon is off.
+- **Time away costs nothing.** After 12 hours with no touch, no panel and no agent finishing, its needs wait for you, and it stops asking for anything. At most 12 hours pass while the daemon is off.
+- **It's glad you took a day off.** The first touch or panel opening after a whole day with no agents, it greets you rested and happy, with a bigger hello after 3 days or more. Its needs are topped up. That's all a day off does: it earns no growth, and nothing counts them.
+- **Tokens stay here.** Growth reads input and output tokens, never cache reads, from what Claude, Codex, OpenCode, Gemini and Pi record on this Mac. `~/.ttycat/token-days.json` keeps a number per day and where it got to in each log. An agent that doesn't record tokens adds nothing to growth, but its turns still earn snacks.
 
-**In the Mac app:** the **Pet** tab has the same pet: Feed, Heal, Clean, Sleep and Wake up, a click on it to pat it, and the bug hunt, played with the mouse. It never sends a notification.
+**In the Mac app:** the **Pet** tab has the same pet: Feed, Clean, Sleep and Wake up, a click on it to pat it, and the bug hunt, played with the mouse. It never sends a notification.
 
 The two stay in step because neither one decides anything. The daemon numbers each bit of care (`ev`, `evk` in the state), and both show the reaction when they see the number change, whichever one it came from. Both draw Bit by the same rules: asleep, then at its laptop if an agent is working, then sad if it needs something. The board tells the daemon when its screen dims, because Bit dozes then. The panel checks four times a second while the Pet page is open, so a tap on the board shows there within about a quarter of a second. Where Bit wanders on the board's screen isn't shared: that's idle animation, and the panel has no room to wander in.
 
@@ -157,7 +160,7 @@ Allow, Deny and answers to questions go through Claude Code's `PermissionRequest
 - **Choosing takes two taps.** A tap only selects; **Send** answers. Both ignore a tap within 600 ms of the screen appearing.
 - **Plans are terminal-only.** `ExitPlanMode` also fires the hook, but Allow would dismiss it without your answer. A question the board can't show in full is terminal-only too.
 - **Other prompts are terminal-only.** Folder trust and other agents don't use this hook. Their text comes from the terminal and is only displayed.
-- **The 60 s countdown only limits how long the buttons stay armed.** When it runs out the screen goes back to the queue. The prompt stays open and can be reopened from the board.
+- **Nothing counts down.** Take as long as you need to read a prompt. After 2 minutes without a touch the screen goes back to the queue, so Allow isn't left live on the desk. The prompt stays open and can be reopened from the board.
 
 Tested against real Claude Code 2.1.316. These behaviours aren't all documented, so check them again after a major update:
 
@@ -223,7 +226,7 @@ One JSON object per line, on the board's USB port. Other lines, such as boot and
 |---|---|
 | Daemon to board | `state` once a second (sessions, local time, history of the watched session, pet counts), `ack` after an answer |
 | Board to daemon | `hello`, `act` (allow, deny, answer, open, seen, and `pet-*`), `watch`, `touch` (logged) |
-| Testing, via `ttycatd.py` | `shot PATH` saves the real frame as a PNG; `tap X Y`, `swipe L\|R\|U\|D`, `goto SCREEN` (`queue`, `overview`, `tab:N`, `ask:ID`, `detail:ID`, `pet`, `game:bot`, `pet:heart`, `pet:reward`, `pet:level`, `pet:sleep`); in demo, `scene NAME` (including `question`, `questions`, `pet-hungry`, `pet-mess`, `pet-sick`, `pet-bored`, `pet-tired`, `pet-asleep`, `pet-lv5`) |
+| Testing, via `ttycatd.py` | `shot PATH` saves the real frame as a PNG; `tap X Y`, `swipe L\|R\|U\|D`, `goto SCREEN` (`queue`, `overview`, `tab:N`, `ask:ID`, `detail:ID`, `pet`, `game:bot`, `pet:heart`, `pet:reward`, `pet:level`, `pet:sleep`); in demo, `scene NAME` (including `question`, `questions`, `pet-hungry`, `pet-mess`, `pet-bored`, `pet-tired`, `pet-asleep`, `pet-lv5`) |
 
 `tap` goes through the same code as a finger, so anything on this Mac running as you can answer prompts the board is showing. The same is true of anything that can type into your terminal. The hook socket, `~/.ttycat/hook.sock`, is only readable by you.
 

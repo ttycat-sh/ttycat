@@ -49,7 +49,6 @@ static icon5_t I_BANG = {0x04, 0x04, 0x04, 0x00, 0x04};
 static icon5_t I_DOTS = {0x00, 0x00, 0x15, 0x00, 0x00};
 static icon5_t I_DASH = {0x00, 0x00, 0x0E, 0x00, 0x00};
 static icon5_t I_FOOD = {0x04, 0x0E, 0x1F, 0x1F, 0x0E};
-static icon5_t I_PLUS = {0x04, 0x04, 0x1F, 0x04, 0x04};
 static icon5_t I_BUG = {0x11, 0x0E, 0x1F, 0x0E, 0x11};
 static icon5_t I_BROOM = {0x01, 0x02, 0x04, 0x0E, 0x1F};
 static icon5_t I_MOON = {0x0E, 0x18, 0x18, 0x18, 0x0E};
@@ -99,7 +98,7 @@ typedef struct {
 
 enum {
   LINK_TIMEOUT_MS = 5000,
-  ASK_WINDOW_MS = 60000,    // Allow/Deny stay armed this long, then the screen stands down
+  ASK_IDLE_MS = 120000,     // untouched this long, an ask goes back to the queue: Allow isn't left live on the desk
   ARM_DELAY_MS = 600,       // a tap this soon after an ask appears is not an answer to it
   ALERT_MS = 8000,
   HOME_AFTER_MS = 30000,    // untouched this long with nothing needing you: the pet's home
@@ -141,6 +140,8 @@ static int64_t alert_until;
 static bool opening;  // Open on Mac sent, no reply yet: more taps wouldn't help
 static int64_t opening_since, opened_until;
 static int32_t pet_seen;
+static int pet_level_seen;
+static int pet_hello = -1;       // a welcome back, saved for when the pet's on screen to give it
 static int pet_pending = -1;     // waiting for the daemon to answer some care: one at a time
 static int64_t pet_pending_since;
 static bool game_over, game_new_best;
@@ -436,8 +437,9 @@ static void draw_pet_stage(void) {
       // a dim screen sends it to sleep, unless there's work on
       .asleep = (dimmed && !working) || model.pet_asleep,
       .working = working,
-      .sick = model.pet_sick,
-      .level = pet_level(model.pet_total),
+      .level = pet_level(model.pet_grown),
+      .birthday = model.pet_birthday,
+      .scarf = model.pet_age >= 100,
       .poops = model.pet_poops,
       .need = (pet_need_t)model.pet_need,
   };
@@ -474,9 +476,15 @@ static void draw_pet_screen(void) {
   mac_indicator(234, GREEN, MUTED);
 
   int32_t gained = model.pet_total - pet_seen;
-  if (gained > 0) {
-    pet_reward((int)gained, pet_level(model.pet_total) > pet_level(pet_seen));
+  int level = pet_level(model.pet_grown);
+  if (gained > 0 || level > pet_level_seen) {  // a level can come from age alone, with no turn to show
+    pet_reward(gained > 0 ? (int)gained : 0, level > pet_level_seen);
     pet_seen = model.pet_total;
+    pet_level_seen = level;
+  }
+  if (pet_hello >= 0) {
+    pet_react(now_ms(), (pet_reaction_t)pet_hello);
+    pet_hello = -1;
   }
   gfx_dashed(6, 112, 228, 2, LINE);
   draw_pet_stage();
@@ -503,7 +511,7 @@ static void draw_pet_screen(void) {
   meter(152, "Rest", model.pet_energy, model.pet_energy < 20);
 
   char line[44];
-  snprintf(line, sizeof(line), "%s \xB7 LV %d \xB7 %d snack%s", model.pet_name, pet_level(model.pet_total), model.pet_snacks,
+  snprintf(line, sizeof(line), "%s \xB7 LV %d \xB7 %d snack%s", model.pet_name, pet_level(model.pet_grown), model.pet_snacks,
            model.pet_snacks == 1 ? "" : "s");
   gfx_center(&vt16, 0, SCR_W, 168, WHITE, line, 0);
   int working = count_state(ST_WORKING), done = count_state(ST_DONE);
@@ -516,8 +524,7 @@ static void draw_pet_screen(void) {
 
   bool awake = !model.pet_asleep;
   care_button(6, 206, "Feed", I_FOOD, awake && model.pet_need == PET_NEED_FOOD, awake, 0);
-  if (model.pet_sick) care_button(123, 206, "Heal", I_PLUS, awake, awake, 4);
-  else care_button(123, 206, "Hunt bugs", I_BUG, awake && model.pet_need == PET_NEED_BORED, awake, 1);
+  care_button(123, 206, "Hunt bugs", I_BUG, awake && model.pet_need == PET_NEED_BORED, awake, 1);
   care_button(6, 262, "Clean", I_BROOM, awake && model.pet_need == PET_NEED_MESS, awake && model.pet_poops, 2);
   care_button(123, 262, awake ? "Sleep" : "Wake up", awake ? I_MOON : I_SUN, !awake || model.pet_need == PET_NEED_TIRED, true, 3);
 }
@@ -553,7 +560,7 @@ static void draw_game(void) {
 }
 
 static void care(int what) {
-  static const char *const acts[5] = {"pet-feed", NULL, "pet-clean", "pet-sleep", "pet-heal"};
+  static const char *const acts[4] = {"pet-feed", NULL, "pet-clean", "pet-sleep"};
   int64_t now = now_ms();
   if (pet_pending >= 0 && now - pet_pending_since < ACK_TIMEOUT_MS) return;
   if (what == 1) {  // the hunt is played here; the daemon only hears the score
@@ -674,7 +681,7 @@ static void draw_overview(void) {
     int nw = gfx_caps_width(&sk9, model.pet_name, 0);
     gfx_caps(&sk9, 204 - nw, 277, WHITE, model.pet_name, 0);
     gfx_icon(I_RIGHT, 214, 283, 2, WHITE);
-    static const char *const asks[] = {"", "is sick", "is hungry", "made a mess", "is tired", "is bored"};
+    static const char *const asks[] = {"", "is hungry", "made a mess", "is tired", "is bored"};
     gfx_right(&vt14, 204, 290, model.pet_need ? ORANGE : FAINT, model.pet_asleep ? "asleep" : model.pet_need ? asks[model.pet_need] : "is fine");
     hit(6, 268, 228, 46, A_PET_OPEN, 0);
   }
@@ -866,7 +873,6 @@ static void draw_queue(void) {
 
 static void draw_ask(const session_t *s) {
   bool approve = s->ask == ASK_APPROVE;
-  int64_t now = now_ms();
   if (approve) {
     int asks = count_state(ST_BLOCKED), pos = 1;
     for (int r = 0, k = 0; r < model.n; r++)
@@ -880,11 +886,6 @@ static void draw_ask(const session_t *s) {
     char of[16];
     snprintf(of, sizeof(of), "%d of %d", pos, asks);
     gfx_text(&vt16, x + shown * 11 + 5, 2, MUTED, of);
-    int left_ms = ASK_WINDOW_MS - (int)(now - ask_opened_at);
-    if (left_ms < 0) left_ms = 0;
-    char secs[8];
-    snprintf(secs, sizeof(secs), "%ds", (left_ms + 999) / 1000);
-    gfx_right(&vt16, 234, 2, ORANGE, secs);
   } else {
     gfx_caps(&sk9, 6, 5, WHITE, "Needs you", 0);
     char w[20], a[8];
@@ -900,13 +901,7 @@ static void draw_ask(const session_t *s) {
   bool sh = !strcmp(s->tool, "BASH") || !strcmp(s->tool, "SHELL");
 
   if (approve) {
-    ask_clipped = code_body(s, 14, 112, 212, 84, CODE, GREEN, sh);
-    int left_ms = ASK_WINDOW_MS - (int)(now - ask_opened_at);
-    int left = left_ms <= 0 ? 0 : (left_ms * 16 + ASK_WINDOW_MS - 1) / ASK_WINDOW_MS;
-    for (int i = 0; i < 16; i++) {
-      int sx = 14 + i * (212 + 2) / 16, ex = 14 + (i + 1) * (212 + 2) / 16 - 2;
-      gfx_fill(sx, 204, ex - sx, 6, i < left ? (left <= 4 ? WHITE : ORANGE) : SPENT);
-    }
+    ask_clipped = code_body(s, 14, 112, 212, 100, CODE, GREEN, sh);
     bool busy = answering;
     button(6, 226, 111, 64, TILE, &c_line, I_CROSS, 3, busy ? FAINT : ORANGE, 10, &sk11, busy ? FAINT : WHITE, "Deny", 2);
     button(123, 226, 111, 64, busy ? CARD : ORANGE, NULL, I_CHECK, 3, busy ? FAINT : BLACK, 10, &sk11, busy ? FAINT : BLACK,
@@ -917,7 +912,7 @@ static void draw_ask(const session_t *s) {
     }
     gfx_center(&vt16, 0, SCR_W, 298, ask_clipped ? ORANGE : FAINT,
                s->file[0] ? "swipe up for full diff"
-                          : ask_clipped ? "swipe up for all of it" : "no answer -> prompt in terminal", 0);
+                          : ask_clipped ? "swipe up for all of it" : "also waiting in the terminal", 0);
   } else {
     ask_clipped = code_body(s, 14, 112, 212, 62, CODE, sh ? GREEN : MUTED, sh);
     gfx_dashed(14, 182, 212, 2, SPENT);
@@ -1398,10 +1393,13 @@ static void notice_new_asks(void) {
   }
   if (first_state) {
     pet_seen = model.pet_total;  // only what happens from now on is news
+    pet_level_seen = pet_level(model.pet_grown);
     pet_ev_seen = model.pet_ev;
   } else if (model.pet_ev != pet_ev_seen) {  // care, given here or on the Mac: both show it
     pet_ev_seen = model.pet_ev;
-    if (model.pet_evk >= 0) pet_react(now_ms(), (pet_reaction_t)model.pet_evk);
+    bool hello = model.pet_evk == PET_RESTED || model.pet_evk == PET_WELCOME || model.pet_evk == PET_BIRTHDAY;
+    if (hello && screen != SCR_PET) pet_hello = model.pet_evk;
+    else if (model.pet_evk >= 0) pet_react(now_ms(), (pet_reaction_t)model.pet_evk);
   }
   first_state = false;
 }
@@ -1442,6 +1440,8 @@ static void handle_goto(const char *name) {
     game_begin(now_ms(), true);
     game_over = false;
     go(SCR_GAME);
+  } else if (!strcmp(name, "pet:birthday")) {
+    pet_react(now_ms(), PET_BIRTHDAY);
   } else if (!strcmp(name, "pet:heart")) {
     pet_react(now_ms(), PET_HEART);
   } else if (!strcmp(name, "pet:reward")) {
@@ -1496,8 +1496,8 @@ static void step_navigation(void) {
     } else if (strcmp(s->rev, cur_rev)) {
       // a different prompt in the same pane: treat it as newly opened
       open_ask(s);
-    } else if (s->ask == ASK_APPROVE && now - ask_opened_at >= ASK_WINDOW_MS) {
-      go(SCR_QUEUE);  // stand down; the prompt is still there, and in the terminal
+    } else if (s->ask == ASK_APPROVE && now - (ask_opened_at > last_touch_ms ? ask_opened_at : last_touch_ms) >= ASK_IDLE_MS) {
+      go(SCR_QUEUE);  // nobody's here; the prompt is still there, and in the terminal
     }
   }
   if (screen == SCR_DETAIL && !find_session(cur_id)) go(SCR_QUEUE);
