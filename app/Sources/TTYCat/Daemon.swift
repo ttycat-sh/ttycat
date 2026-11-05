@@ -84,6 +84,7 @@ struct BoardInfo: Decodable {
   var port: String?
   var fw: String?
   var dim: Bool?  // its screen is dim, and Bit dozes there
+  var approves: Bool?  // it may say yes to prompts: see daemon/devices.py
 }
 
 struct MachineInfo: Decodable {

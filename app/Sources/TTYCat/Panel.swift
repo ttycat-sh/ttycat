@@ -573,6 +573,7 @@ private struct SetupPage: View {
 private struct FirmwareSection: View {
   @EnvironmentObject var m: TTYCatModel
   @StateObject private var confirming = Local(false)  // an unknown device: asked twice
+  @StateObject private var confirmingApprove = Local(false)  // so is letting a device say yes
 
   var body: some View {
     Section(title: "Firmware") {
@@ -599,6 +600,24 @@ private struct FirmwareSection: View {
         } else {
           PixelButton(title: "Reinstall firmware") { confirming.value = true }
         }
+      case .customFirmware(let name, let port, let canReplace):
+        Fact(name: "Board", value: "\(name), custom firmware", good: true)
+        note("This isn't ttycat's firmware, so it won't be updated from here.")
+        approveChoice(name)
+        if canReplace {
+          if confirming.value {
+            note("This erases \(name) from \(port).", warn: true)
+            HStack(spacing: 6) {
+              PixelButton(title: "Cancel") { confirming.value = false }
+              PixelButton(title: "Erase it", loud: true, enabled: !m.flashBusy) {
+                confirming.value = false
+                m.updateFirmware(unknown: true)
+              }
+            }
+          } else {
+            PixelButton(title: "Replace with ttycat firmware") { confirming.value = true }
+          }
+        }
       case .upToDate(let version):
         Fact(name: "Board", value: "\(version), up to date", good: true)
       case .boardNewer(let board, let app):
@@ -620,6 +639,28 @@ private struct FirmwareSection: View {
       }
       if let flash = m.status?.flash, flash.state == "failed", !m.flashBusy {
         note("Last try failed: \(flash.msg)", warn: true)
+      }
+    }
+  }
+
+  /// Off unless you turn it on. Only worth turning on for a device that shows the whole prompt.
+  @ViewBuilder private func approveChoice(_ name: String) -> some View {
+    if m.status?.board.approves == true {
+      Toggled(title: "It can approve prompts", on: true, detail: "turn off to allow Deny only") {
+        m.setDeviceApproves(name, false)
+      }
+    } else if confirmingApprove.value {
+      note("Only if it shows you the whole prompt before you say yes. Otherwise you'd be approving what nobody has read.", warn: true)
+      HStack(spacing: 6) {
+        PixelButton(title: "Cancel") { confirmingApprove.value = false }
+        PixelButton(title: "Let it approve", loud: true) {
+          confirmingApprove.value = false
+          m.setDeviceApproves(name, true)
+        }
+      }
+    } else {
+      Toggled(title: "It can approve prompts", on: false, detail: "it can only Deny for now") {
+        confirmingApprove.value = true
       }
     }
   }

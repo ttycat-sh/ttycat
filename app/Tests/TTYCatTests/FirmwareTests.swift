@@ -37,8 +37,17 @@ private func plan(_ s: DaemonStatus?, image i: FirmwareImage? = image, silent: D
   #expect(plan(status(fw: "0.8.0")) == .boardNewer(board: "0.8.0", app: "0.7.0"))
 }
 
-@Test func aVersionItCantReadIsStillOffered() {
-  #expect(plan(status(fw: "dev")) == .update(from: "dev", to: "0.7.0"))
+@Test func customFirmwareIsNeverOfferedAnUpdate() {
+  let lamp = FirmwarePlan.customFirmware(name: "my-lamp-1.0", port: "cu.usbmodem1101", canReplace: true)
+  #expect(plan(status(fw: "my-lamp-1.0")) == lamp)
+  #expect(!plan(status(fw: "my-lamp-1.0")).wantsAttention)
+  #expect(plan(status(fw: "dev")) == .customFirmware(name: "dev", port: "cu.usbmodem1101", canReplace: true))
+  #expect(plan(status(fw: "my-lamp-1.0", tool: false)) == .customFirmware(name: "my-lamp-1.0", port: "cu.usbmodem1101", canReplace: false))
+}
+
+@Test func onlyPlainVersionsAreOurs() {
+  for ours in ["0.9.1", "1", "0.10.0"] { #expect(!FirmwareVersion.isCustom(ours)) }
+  for theirs in ["my-lamp-1.0", "dev", "0.9.1-mine", "1..2", "+1.2", ""] { #expect(FirmwareVersion.isCustom(theirs)) }
 }
 
 @Test func aSilentPortGetsTimeBeforeItCountsAsUnknown() {

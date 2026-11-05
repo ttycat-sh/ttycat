@@ -173,7 +173,8 @@ enum Preview {
       pid: 4242, s: rows, pet: pet,
       board: BoardInfo(
         connected: connected, port: connected ? "/dev/cu.usbmodem1101" : nil,
-        fw: !connected || scene == "fw-unknown" || scene == "fw-back" ? nil : "0.6.1"),
+        fw: !connected || scene == "fw-unknown" || scene == "fw-back" ? nil : scene.hasPrefix("fw-custom") ? "my-lamp-1.0" : "0.6.1",
+        approves: scene == "fw-custom-on"),
       machines: [MachineInfo(host: "studio", up: true, answers: true)],
       flash: FlashInfo(
         state: flashState, pct: 62, msg: scene == "fw-fail" ? "Couldn't reach the board. Hold BOOT while you plug it in, then try again." : "",

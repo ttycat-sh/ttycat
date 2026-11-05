@@ -59,7 +59,7 @@ app/build.sh install    # also copies it to /Applications and starts it
 - **The panel is its own window, not SwiftUI's `MenuBarExtra`,** which grows its window but never shrinks it (`StatusPanel.swift`). Its top stays under the icon, its height follows the page, and a page too tall for the screen scrolls under the tabs. It takes the keyboard without making this the active app, like Spotlight, so what you were in stays in front. A click elsewhere, Esc, or switching app closes it. Its content is built new on each open, so a prompt's buttons always get their full delay.
 - **One daemon at a time.** A second one exits with status 3. If one's already running, from a terminal say, the app uses it, and leaves it running when it quits. One the app started stops with it.
 - Plain `@State` doesn't build here: in current SDKs it's a macro, and its plugin comes only with Xcode. Panel.swift has a small stand-in.
-- To check the look without opening the menu: `"app/build/ttycat.app/Contents/MacOS/ttycat" --preview out.png needs` (`busy`, `needs`, `diff`, `long`, `question`, `questions`, `terminal`, `detail`, `done`, `idle`, `setup`, `setup-new`, `setup-denied`, `setup-short`, `welcome`, `noboard`, `pet`, `pet-asleep`, `pet-needs`, `pet-hunt`, `pet-score`, `fw-update`, `fw-write`, `fw-back`, `fw-fail`, `fw-unknown`, `stopped`, `unplugged`).
+- To check the look without opening the menu: `"app/build/ttycat.app/Contents/MacOS/ttycat" --preview out.png needs` (`busy`, `needs`, `diff`, `long`, `question`, `questions`, `terminal`, `detail`, `done`, `idle`, `setup`, `setup-new`, `setup-denied`, `setup-short`, `welcome`, `noboard`, `pet`, `pet-asleep`, `pet-needs`, `pet-hunt`, `pet-score`, `fw-update`, `fw-write`, `fw-back`, `fw-fail`, `fw-unknown`, `fw-custom`, `fw-custom-on`, `stopped`, `unplugged`).
 
 ## Where agents come from
 
@@ -88,6 +88,7 @@ herdr isn't required, on this Mac or on other machines. A session outside it jus
 **From the app:** Setup > Firmware > **Update board**. It takes about 10 seconds, and the board has to say it's running the new version before the update counts as done. Agents keep running meanwhile; answer prompts in the panel or the terminal until the board's back.
 
 - The app carries the firmware that was built when `app/build.sh` ran, so build the firmware first. The version comes from the binary, and updates are offered only for a board on an older one, so **bump `FW_VERSION` in `firmware/main/model.h` for every release**. A changed build with the same number won't be offered.
+- **Your own firmware keeps its place.** A build whose `FW_VERSION` isn't a plain version number, such as `my-lamp-1.0`, counts as custom. The app never offers to update it, and Setup only replaces it if you ask to and confirm. If you change the firmware and keep the number, the app takes it for its own and will offer updates that overwrite it.
 - It uses esptool from your ESP-IDF install (`~/.espressif/python_env`). Without it, Setup says so.
 - Each file's hash is checked before anything's written, and esptool refuses a board with a different chip.
 - If an update fails partway, the board stops answering and Setup offers **Reinstall firmware**. That's asked twice and names the port, because a port that doesn't answer could be another device: the daemon uses the first `/dev/cu.usbmodem*` it finds. If it can't connect, hold BOOT while plugging the board in.
@@ -227,6 +228,8 @@ One JSON object per line, on the board's USB port. Other lines, such as boot and
 | Daemon to board | `state` once a second (sessions, local time, history of the watched session, pet counts), `ack` after an answer |
 | Board to daemon | `hello`, `act` (allow, deny, answer, open, seen, and `pet-*`), `watch`, `touch` (logged) |
 | Testing, via `ttycatd.py` | `shot PATH` saves the real frame as a PNG; `tap X Y`, `swipe L\|R\|U\|D`, `goto SCREEN` (`queue`, `overview`, `tab:N`, `ask:ID`, `detail:ID`, `pet`, `game:bot`, `pet:heart`, `pet:reward`, `pet:level`, `pet:sleep`); in demo, `scene NAME` (including `question`, `questions`, `pet-hungry`, `pet-mess`, `pet-bored`, `pet-tired`, `pet-asleep`, `pet-lv5`) |
+
+**Only ttycat's own firmware can approve without being asked about.** A device that gives any other name in `hello`, or none, can see everything, open a session and Deny, but its `allow` and `answer` are refused. That's because it may have no way to show the whole prompt. For one that does, Setup > Firmware has **It can approve prompts**, off until you confirm, for that name only (`~/.ttycat/devices.json`). This guards against accidents. It can't stop a device built to lie about its name, and a build that keeps the official version number counts as official.
 
 `tap` goes through the same code as a finger, so anything on this Mac running as you can answer prompts the board is showing. The same is true of anything that can type into your terminal. The hook socket, `~/.ttycat/hook.sock`, is only readable by you.
 

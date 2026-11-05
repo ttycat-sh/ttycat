@@ -489,6 +489,22 @@ final class TTYCatModel: ObservableObject {
     }
   }
 
+  /// Whether the custom firmware that's plugged in may say yes to prompts.
+  func setDeviceApproves(_ name: String, _ on: Bool) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      let data = Ctl.request(["t": "device", "fw": name, "approve": on], timeout: 3)
+      let reply = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+      let ok = reply?["ok"] as? Bool ?? false
+      let message = reply?["msg"] as? String
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          if !ok { self.show(message?.isEmpty == false ? message! : "the daemon didn't answer") }
+          self.poll()
+        }
+      }
+    }
+  }
+
   func restartDaemon() {
     supervisor.restart(runningPid: status?.pid)
     status = nil

@@ -37,6 +37,13 @@ enum FirmwareVersion {
     }
     return false
   }
+
+  /// ttycat's firmware gives a plain version. Anything else is someone's own, and isn't ours to replace.
+  static func isCustom(_ fw: String) -> Bool {
+    !fw.split(separator: ".", omittingEmptySubsequences: false).allSatisfy { part in
+      !part.isEmpty && part.utf8.allSatisfy { (48...57).contains($0) }
+    }
+  }
 }
 
 enum FirmwarePlan: Equatable {
@@ -45,6 +52,7 @@ enum FirmwarePlan: Equatable {
   case notConnected
   case identifying                // just connected: it says what it runs within seconds
   case unknownDevice(port: String)  // a port that doesn't answer: could be any device
+  case customFirmware(name: String, port: String, canReplace: Bool)  // someone's own: never offered as an update
   case upToDate(String)
   case boardNewer(board: String, app: String)
   case update(from: String, to: String)
@@ -63,6 +71,9 @@ enum FirmwarePlan: Equatable {
     guard let fw = status.board.fw else {
       if silent < unknownAfter { return .identifying }
       return flash.tool ? .unknownDevice(port: (port as NSString).lastPathComponent) : .noTool(to: image.version)
+    }
+    if FirmwareVersion.isCustom(fw) {
+      return .customFirmware(name: fw, port: (port as NSString).lastPathComponent, canReplace: flash.tool)
     }
     if fw == image.version { return .upToDate(fw) }
     if FirmwareVersion.isNewer(fw, than: image.version) == true { return .boardNewer(board: fw, app: image.version) }
