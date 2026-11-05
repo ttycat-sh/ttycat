@@ -75,7 +75,7 @@ private struct TopBar: View {
   var body: some View {
     HStack(spacing: 2) {
       tab("Agents", count: m.rows.count, page: .agents)
-      tab("Pet", count: nil, page: .pet)
+      tab("Bit", count: nil, page: .pet)
       ForEach(Extensions.pages, id: \.id) { extra in
         tab(extra.title, count: nil, page: .extra(extra.id))
       }
