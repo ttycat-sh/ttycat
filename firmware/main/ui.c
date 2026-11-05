@@ -474,7 +474,7 @@ static void draw_pet_screen(void) {
   snprintf(line, sizeof(line), "LV %d", level);
   gfx_text(&vt18, 6, 118, WHITE, model.pet_name);
   gfx_right(&vt18, 234, 118, ORANGE, line);
-  enum { CELLS = 19, CELL = 12 };
+  enum { CELLS = 23, CELL = 10 };
   int filled = pet_progress(model.pet_grown, CELLS);
   for (int i = 0; i < CELLS; i++) gfx_fill(6 + i * CELL, 138, CELL - 2, 8, i < filled ? ORANGE : DOT_OFF);
   gfx_text(&vt16, 6, 150, MUTED, next_keepsake(level));
@@ -502,9 +502,9 @@ static void draw_pet_screen(void) {
   if (done) snprintf(line, sizeof(line), "%d done \xB7 %d working \xB7 tap to see", done, working);
   else if (working) snprintf(line, sizeof(line), "%d agent%s working", working, working == 1 ? "" : "s");
   else snprintf(line, sizeof(line), "%d turn%s today", (int)model.pet_today, model.pet_today == 1 ? "" : "s");
-  gfx_box(6, 256, 228, 52, TILE, &c_line, BLACK);
-  gfx_center(&vt18, 0, SCR_W, 273, done ? GREEN : WHITE, line, 0);
-  hit(6, 256, 228, 52, A_QUEUE, 0);
+  gfx_box(6, 246, 228, 46, TILE, &c_line, BLACK);  // the toast has the rows under it
+  gfx_center(&vt18, 0, SCR_W, 260, done ? GREEN : WHITE, line, 0);
+  hit(6, 246, 228, 46, A_QUEUE, 0);
 }
 
 // An ask took the screen. Whoever was tapping is still tapping, and the next screens
@@ -610,7 +610,7 @@ static void draw_overview(void) {
     gfx_icon(I_RIGHT, 214, 283, 2, WHITE);
     char lv[12];
     snprintf(lv, sizeof(lv), "LV %d", pet_level(model.pet_grown));
-    gfx_right(&vt14, 204, 290, FAINT, model.pet_asleep ? "asleep" : lv);
+    gfx_right(&vt14, 204, 290, FAINT, model.pet_asleep && !count_state(ST_WORKING) ? "asleep" : lv);
     hit(6, 268, 228, 46, A_PET_OPEN, 0);
   }
 }
