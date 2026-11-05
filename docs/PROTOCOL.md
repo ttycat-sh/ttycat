@@ -23,7 +23,7 @@ The Mac answers each `act` with `{"t":"ack","ok":true,"msg":""}`. An `ack` doesn
 | `ask-mac` | Brings that prompt up in the Mac's panel, to be answered there. It's what a board shows instead of Allow when `na` is set | Any device |
 | `open` | Brings that session up in its terminal on the Mac. It answers nothing. It can hold the daemon up for several seconds, so expect a gap in `state` | Any device |
 | `deny` | Says no to the prompt with this `rev`. Only when `ask` is `approve`, and only with the hook on (Setup > Answer prompts). Otherwise it's refused and the prompt stays in the terminal | Any device |
-| `seen`, `pet-*` | Marks a finished session as seen, and cares for Bit | Any device |
+| `seen`, `pet-pat`, `pet-here` | Marks a finished session as seen, gives Bit a heart, or says someone's here for its greeting | Any device |
 | `allow` | Says yes. Rule 2 in `AGENTS.md` applies | Release builds, or a build the person has allowed in Setup. Otherwise `state` has `na` |
 | `answer` | Answers a question, with `"ans":[{"o":[0],"t":"typed"}]`, one entry for each question | The same |
 
@@ -44,7 +44,7 @@ A line can be up to 24 KB. Read it into a big enough buffer. If a line is too lo
 |---|---|
 | `now` | Local time, seconds since 1970 as if UTC |
 | `s` | The sessions: see below |
-| `pet` | Bit: `total today grown food fun energy poops need asleep birthday snacks age best ev evk name` |
+| `pet` | Bit: `total today grown asleep birthday age ev evk name`. `grown` is what its level comes from: level n starts at 3(n-1)² |
 | `hist` | `{"id":ID,"items":[{"age":"2m","text":"...","tone":0}]}` for the watched session |
 | `look` | `[skin, accent]`, left out when both are default |
 | `na` | True if this device can't approve yet. Offer `ask-mac` instead of Allow |

@@ -15,7 +15,6 @@
 #define GREEN RGB(0x3FD38A)
 #define MUTED RGB(0x9A9A9A)
 #define GOLD RGB(0xFFD34D)
-#define BROWN RGB(0x8A5A2B)
 #define LAPTOP RGB(0xC4C4C4)
 #define LAPTOP_EDGE RGB(0x7A7A7A)
 
@@ -28,13 +27,12 @@ enum {
   HOP_MS = 420,
   HOP_UP = 3 * D,
   STEP_MS = 170,
-  EAT_MS = 1400,
   REACT_MS = 1300,
   DESK = LEFT + 15 * D,  // where it works: the middle of the stage
   TYPE_MS = 170,
 };
 
-typedef enum { SIT, WALK, HOP, NAP, EAT, WORK } pet_mode_t;
+typedef enum { SIT, WALK, HOP, NAP, WORK } pet_mode_t;
 
 static const char *const BODY[12] = {
     "..oo........oo..",
@@ -53,22 +51,16 @@ static const char *const BODY[12] = {
 
 typedef const char *const icon_t[6];
 static icon_t HEART = {".oo.oo.", "ooooooo", "ooooooo", ".ooooo.", "..ooo..", "...o..."};
-static icon_t FOOD = {"...o...", ".oo.oo.", "ooooooo", "ooooooo", ".ooooo.", "..ooo.."};
-static icon_t POOP = {"...o...", "..ooo..", ".ooooo.", ".ooooo.", "ooooooo", "ooooooo"};
-static icon_t ZZZ = {"ooooo..", "...o...", "..o....", ".o.....", "ooooo..", "......."};
-static icon_t BORED = {".oooo..", "o....o.", "...oo..", "..o....", ".......", "..o...."};
-static icon_t SPARK = {"...o...", "..o.o..", ".o...o.", "..o.o..", "...o...", "......."};
 
 static pet_mode_t mode = SIT;
 static int x = LEFT + 14 * D;  // always a whole sprite pixel from LEFT, or it never lands on a target
 static int target;
-static int64_t mode_until, step_at, hop_start, eat_start;
+static int64_t mode_until, step_at, hop_start;
 static int hops;
 static int64_t blink_at, blink_end, look_until;
 static int look;
-static int64_t react_start, plus_start, banner_until, hello_until;
+static int64_t react_start, banner_until, hello_until;
 static pet_reaction_t react_kind;
-static int plus_n;
 static int top_y = GROUND - 14 * D;
 
 int pet_level(int32_t total) {
@@ -115,11 +107,7 @@ static void start_hops(int64_t now, int n) {
 void pet_react(int64_t now, pet_reaction_t what) {
   react_kind = what;
   react_start = now;
-  if (what == PET_EAT) {
-    mode = EAT;
-    eat_start = now;
-    react_start = 0;
-  } else if (what == PET_RESTED || what == PET_WELCOME || what == PET_BIRTHDAY) {  // rested, and glad to see you
+  if (what == PET_RESTED || what == PET_WELCOME || what == PET_BIRTHDAY) {  // rested, and glad to see you
     start_hops(now, what == PET_RESTED ? 3 : 5);
     hello_until = now + 4000;
     react_start = 0;  // its hops and the words say it
@@ -131,8 +119,6 @@ void pet_react(int64_t now, pet_reaction_t what) {
 void pet_reward(int n, bool level_up) {
   int64_t now = esp_timer_get_time() / 1000;
   start_hops(now, n > 5 ? 5 : n < 1 ? 1 : n);
-  plus_start = now;
-  plus_n = n;
   if (level_up) banner_until = now + 4000;
 }
 
@@ -143,8 +129,8 @@ void pet_bounds(int *bx, int *by, int *bw, int *bh) {
   *bh = GROUND - top_y + 12;
 }
 
-static void choose_next(int64_t now, bool sad) {
-  if (rnd(100) < (sad ? 15u : 45u)) {  // a sad pet mostly sits
+static void choose_next(int64_t now) {
+  if (rnd(100) < 45u) {
     int steps = (RIGHT - LEFT) / D;
     target = LEFT + (int)rnd((uint32_t)steps + 1) * D;
     mode = WALK;
@@ -156,16 +142,8 @@ static void choose_next(int64_t now, bool sad) {
 }
 
 static void advance(int64_t now, const pet_look_t *look_in) {
-  bool sad = look_in->need != PET_NEED_NONE;
   if (mode == HOP) {
     if (now - hop_start >= HOP_MS * hops) {
-      mode = SIT;
-      mode_until = now + 1500;
-    }
-    return;
-  }
-  if (mode == EAT) {
-    if (now - eat_start >= EAT_MS) {
       mode = SIT;
       mode_until = now + 1500;
     }
@@ -201,36 +179,18 @@ static void advance(int64_t now, const pet_look_t *look_in) {
       mode_until = now + 2000 + rnd(4000);
     } else if (now >= step_at) {
       x += x < target ? D : -D;
-      step_at = now + (sad ? STEP_MS * 2 : STEP_MS);
+      step_at = now + STEP_MS;
     }
     if (target != x) look = target > x ? 1 : -1;
     return;
   }
   if (now >= mode_until) {
-    choose_next(now, sad);
+    choose_next(now);
   }
   if (now >= look_until) {
     look = (int)rnd(3) - 1;
     look_until = now + 1200 + rnd(2500);
   }
-}
-
-static void draw_poops(int count) {
-  static const int spots[3] = {16, 204, 110};
-  for (int i = 0; i < count && i < 3; i++) icon(POOP, spots[i], GROUND - 18, 3, BROWN);
-}
-
-static void draw_bubble(int head_y, pet_need_t need) {
-  icon_t *what = need == PET_NEED_FOOD ? &FOOD : need == PET_NEED_MESS ? &POOP
-               : need == PET_NEED_TIRED ? &ZZZ : &BORED;
-  color_t c = need == PET_NEED_FOOD ? ORANGE : need == PET_NEED_MESS ? BROWN : INK;
-  int bx = x + COLS * D - 8;
-  if (bx + 22 > 238) bx = x - 14;
-  int by = head_y - 18;
-  if (by < 18) by = 18;
-  gfx_fill(bx + 2, by, 18, 18, WHITE);
-  gfx_fill(bx, by + 2, 22, 14, WHITE);
-  icon(*what, bx + 4, by + 3, 2, c);
 }
 
 // The lid faces us, so its hands show either side of it, taking turns on the keys.
@@ -268,12 +228,10 @@ static void draw_helpers(int64_t now, int count) {
 
 void pet_draw(int64_t now, const pet_look_t *p) {
   advance(now, p);
-  draw_poops(p->poops);
   draw_helpers(now, p->asleep ? p->working : p->working - 1);
 
-  bool napping = mode == NAP, hopping = mode == HOP, walking = mode == WALK, eating = mode == EAT, working = mode == WORK;
+  bool napping = mode == NAP, hopping = mode == HOP, walking = mode == WALK, working = mode == WORK;
   bool joyful = hopping || now < banner_until || now < hello_until;
-  bool sad = !joyful && !eating && p->need != PET_NEED_NONE;
   color_t body = bit_body, shade = SHADE;
 
   int lift = 0;
@@ -322,7 +280,7 @@ void pet_draw(int64_t now, const pet_look_t *p) {
 
   // face
   int ey = ry[5];
-  int shift = napping || joyful || eating || working ? 0 : look;
+  int shift = napping || joyful || working ? 0 : look;
   if (now >= blink_end && now >= blink_at) {
     blink_end = now + 130;
     blink_at = now + 2200 + rnd(3500);
@@ -331,7 +289,7 @@ void pet_draw(int64_t now, const pet_look_t *p) {
   if (napping) {
     block(3, ry[6], 3, 1, INK);
     block(10, ry[6], 3, 1, INK);
-  } else if (joyful || eating) {
+  } else if (joyful) {
     for (int side = 0; side < 2; side++) {
       int c = side ? 10 : 3;
       block(c, ry[6], 1, 1, INK);
@@ -346,11 +304,6 @@ void pet_draw(int64_t now, const pet_look_t *p) {
   } else if (working) {  // eyes on the screen
     block(4, ry[6], 2, 2, INK);
     block(10, ry[6], 2, 2, INK);
-  } else if (sad) {  // heavy lids
-    block(4 + shift, ry[6], 2, 2, INK);
-    block(10 + shift, ry[6], 2, 2, INK);
-    block(3 + shift, ry[5], 3, 1, shade);
-    block(10 + shift, ry[5], 3, 1, shade);
   } else {
     block(4 + shift, ey, 2, 3, INK);
     block(10 + shift, ey, 2, 3, INK);
@@ -360,16 +313,9 @@ void pet_draw(int64_t now, const pet_look_t *p) {
   // mouth
   if (working) {
     // behind the lid
-  } else if (eating) {
-    bool open = (now - eat_start) / 170 % 2 == 0;
-    block(6, ry[8], 4, open ? 2 : 1, INK);
   } else if (joyful) {
     block(6, ry[8], 4, 1, INK);
     block(7, ry[9], 2, 1, INK);
-  } else if (sad) {
-    block(7, ry[8], 2, 1, INK);
-    block(6, ry[9], 1, 1, INK);
-    block(9, ry[9], 1, 1, INK);
   } else if (!napping) {
     block(7, ry[9], 2, 1, shade);
   }
@@ -379,7 +325,7 @@ void pet_draw(int64_t now, const pet_look_t *p) {
     block(4, ry[1], 8, 1, WHITE);
     block(0, ry[5], 2, 3, WHITE);
     block(14, ry[5], 2, 3, WHITE);
-    if (!joyful && !napping && !sad && !eating && !working) block(12, ry[9], 2, 1, WHITE);
+    if (!joyful && !napping && !working) block(12, ry[9], 2, 1, WHITE);
   }
   if (p->scarf && !working && !napping) {  // what it keeps from its first 100 days
     block(1, ry[10], 14, 1, GREEN);
@@ -411,11 +357,6 @@ void pet_draw(int64_t now, const pet_look_t *p) {
       if (by > 18) gfx_text(&vt16, cx + 46 + i * 8, by, GREEN, bits[(now + i * 800) / 2400 % 3]);
     }
   }
-  if (eating) {  // the bites get smaller
-    int left = EAT_MS - (int)(now - eat_start);
-    int dot = left > EAT_MS * 2 / 3 ? 3 : left > EAT_MS / 3 ? 2 : 1;
-    icon(FOOD, cx - 7 * dot / 2, top_y - 4 - 6 * dot, dot, GREEN);
-  }
   if (napping) {
     for (int i = 0; i < 2; i++) {
       int t = (int)((now + i * 1400) % 2800);
@@ -426,19 +367,7 @@ void pet_draw(int64_t now, const pet_look_t *p) {
   if (react_start && now - react_start < REACT_MS) {
     int t = (int)(now - react_start);
     int hy = top_y - 14 - t * 16 / REACT_MS;
-    if (hy > 18) {
-      if (react_kind == PET_SPARKLE) {
-        icon(SPARK, cx - 26, hy + 8, 2, WHITE);
-        icon(SPARK, cx + 12, hy, 2, WHITE);
-      } else icon(HEART, cx - 7, hy, 2, WHITE);
-    }
-  }
-  if (plus_start && now - plus_start < 1800 && plus_n > 0) {
-    char plus[12];
-    snprintf(plus, sizeof(plus), "+%d", plus_n);
-    int py = top_y - 16 - (int)((now - plus_start) * 10 / 1800);
-    if (py < 18) py = 18;
-    gfx_text(&vt18, cx + 22, py, GREEN, plus);
+    if (hy > 18) icon(HEART, cx - 7, hy, 2, WHITE);
   }
   if (now < banner_until && (now / 300) % 4 != 3) {
     char b[16];
@@ -446,7 +375,5 @@ void pet_draw(int64_t now, const pet_look_t *p) {
     gfx_caps(&sk11, 6, 22, GREEN, b, 1);
   } else if (now < hello_until) {
     gfx_caps(&sk11, 6, 22, GREEN, react_kind == PET_BIRTHDAY ? "Happy birthday" : "Welcome back", 1);
-  } else if (p->need != PET_NEED_NONE && !napping && !hopping && !eating) {
-    draw_bubble(y0, p->need);
   }
 }

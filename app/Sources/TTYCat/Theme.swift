@@ -96,12 +96,7 @@ struct PixelIcon: View {
   static let dash: [UInt8] = [0x00, 0x00, 0x0E, 0x00, 0x00]
   static let right: [UInt8] = [0x08, 0x04, 0x02, 0x04, 0x08]
   static let left: [UInt8] = [0x02, 0x04, 0x08, 0x04, 0x02]
-  static let food: [UInt8] = [0x04, 0x0E, 0x1F, 0x1F, 0x0E]
   static let plus: [UInt8] = [0x04, 0x04, 0x1F, 0x04, 0x04]
-  static let bug: [UInt8] = [0x11, 0x0E, 0x1F, 0x0E, 0x11]
-  static let broom: [UInt8] = [0x01, 0x02, 0x04, 0x0E, 0x1F]
-  static let moon: [UInt8] = [0x0E, 0x18, 0x18, 0x18, 0x0E]
-  static let sun: [UInt8] = [0x15, 0x0E, 0x1F, 0x0E, 0x15]
 
   let rows: [UInt8]
   var scale: CGFloat = 2
@@ -169,21 +164,3 @@ struct PixelCheckbox: View {
   }
 }
 
-// Food, fun, rest on the home screen: eight blocks.
-struct PixelMeter: View {
-  let label: String
-  let value: Int
-  var low = false
-  var body: some View {
-    HStack(spacing: 4) {
-      Caps(label)
-      HStack(spacing: 2) {
-        let filled = value > 0 ? max(1, (value * 8 + 50) / 100) : 0
-        ForEach(0..<8, id: \.self) { i in
-          Rectangle().fill(i < filled ? (low ? Palette.white : Palette.orange) : Palette.dotOff)
-            .frame(width: 5, height: 8)
-        }
-      }
-    }
-  }
-}

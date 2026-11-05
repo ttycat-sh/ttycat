@@ -77,9 +77,8 @@ typedef struct {
   int hist_n;
   int32_t pet_total, pet_today;  // turns agents have finished
   int32_t pet_grown;             // what its level comes from: time, and tokens
-  uint8_t pet_food, pet_fun, pet_energy, pet_poops, pet_need;  // pet_need_t
   bool pet_asleep, pet_birthday;
-  int16_t pet_snacks, pet_age, pet_best;
+  int16_t pet_age;
   int32_t pet_ev;  // numbers the latest care, from here or the Mac
   int8_t pet_evk;  // what it looks like: a pet_reaction_t, or -1 for nothing
   char pet_name[12];

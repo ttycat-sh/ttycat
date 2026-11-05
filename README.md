@@ -59,7 +59,7 @@ app/build.sh install    # also copies it to /Applications and starts it
 - **The panel is its own window, not SwiftUI's `MenuBarExtra`,** which grows its window but never shrinks it (`StatusPanel.swift`). Its top stays under the icon, its height follows the page, and a page too tall for the screen scrolls under the tabs. It takes the keyboard without making this the active app, like Spotlight, so what you were in stays in front. A click elsewhere, Esc, or switching app closes it. Its content is built new on each open, so a prompt's buttons always get their full delay.
 - **One daemon at a time.** A second one exits with status 3. If one's already running, from a terminal say, the app uses it, and leaves it running when it quits. One the app started stops with it.
 - Plain `@State` doesn't build here: in current SDKs it's a macro, and its plugin comes only with Xcode. Panel.swift has a small stand-in.
-- To check the look without opening the menu: `"app/build/ttycat.app/Contents/MacOS/ttycat" --preview out.png needs` (`busy`, `needs`, `diff`, `long`, `question`, `questions`, `terminal`, `detail`, `done`, `idle`, `setup`, `setup-new`, `setup-denied`, `setup-short`, `welcome`, `noboard`, `pet`, `pet-asleep`, `pet-needs`, `pet-hunt`, `pet-score`, `fw-update`, `fw-write`, `fw-back`, `fw-fail`, `fw-unknown`, `fw-custom`, `fw-custom-on`, `stopped`, `unplugged`).
+- To check the look without opening the menu: `"app/build/ttycat.app/Contents/MacOS/ttycat" --preview out.png needs` (`busy`, `needs`, `diff`, `long`, `question`, `questions`, `terminal`, `detail`, `done`, `idle`, `setup`, `setup-new`, `setup-denied`, `setup-short`, `welcome`, `noboard`, `pet`, `pet-asleep`, `pet-needs`, `pet-level`, `pet-hello`, `pet-birthday`, `fw-update`, `fw-write`, `fw-back`, `fw-fail`, `fw-unknown`, `fw-custom`, `fw-custom-on`, `stopped`, `unplugged`).
 
 ## Where agents come from
 
@@ -124,36 +124,28 @@ These have been tried without hardware, and not yet on a real board.
 | **Question** | When Claude asks a question: tap an option, or **Type an answer** for the keyboard, then **Send**. If it's several questions, **Next** moves through them. Multi-select allows several picks. Swipe up to read everything, including each option's description. **Later** steps away and keeps your picks. |
 | **Needs you** | A prompt the board can't answer. **Open on Mac** focuses that pane in herdr and brings Ghostty forward. The button shows **Opening**, then a green **Look at Mac**. |
 | **Detail** | Recent events for a session, and the chime's mute switch. Lines too long to fit scroll by themselves. Swipe right to go back. |
-| **Home** | The pet, the time, how the agents are doing, and the care buttons. While an agent works, Bit walks to the middle and types on a laptop, with a small Bit beside it for each other agent working (4 at most; the status line has the true count). If Bit is asleep, the small ones work without it. Appears after 30 s untouched, unless an agent is waiting on you or there's an error: then the board stays on the queue. It dims 2 minutes after the last touch, and the first touch on a dim screen only wakes it. Tap **Agents**, the status line, or swipe sideways for the queue. |
+| **Home** | Bit and its level, the time, and how the agents are doing. While an agent works, Bit walks to the middle and types on a laptop, with a small Bit beside it for each other agent working (4 at most; the status line has the true count). Appears after 30 s untouched, unless an agent is waiting on you or there's an error: then the board stays on the queue. It dims 2 minutes after the last touch, and the first touch on a dim screen only wakes it. Tap **Agents**, the box at the bottom, or swipe sideways for the queue. |
 
 ## The pet
 
-Bit lives on the home screen, which has its care buttons. To go there straight away, tap the **All clear** tile on Overview, which also says how it's doing. Rename it with `python3 daemon/ttycatd.py pet --name NAME` (11 characters), and see its stats with `ttycatd.py pet`.
+Bit lives on the home screen. There's nothing to look after: it's never hungry or sick, it can't die, and it's fine however long you leave it. What it has is a level, shown with how far it is to the next one and what that level brings. To go there straight away, tap the **All clear** tile on Overview. Rename it with `python3 daemon/ttycatd.py pet --name NAME` (11 characters), and see its stats with `ttycatd.py pet`.
 
-| It needs | Runs out in | What helps |
-|---|---|---|
-| **Food** | about 16 hours | **Feed**. Each turn that ends earns a snack (+30), however it ended. With no snacks it gets plain rice (+10). |
-| **Fun** | about 20 hours | **Hunt bugs**: tap bugs for 20 seconds. The more you squash, the more it helps. Tapping the pet helps a little, once a minute. |
-| **Rest** | about 20 hours | It sleeps from 22:00 to 07:00. **Sleep** and **Wake up** override that: a nap lasts until it's rested, up to 3 hours, and waking at night buys 30 minutes. |
-| **Cleaning** | a mess every 5 awake hours, 3 at most | **Clean** |
-
-It's always healthy. If food runs out or the messes pile up, it only looks sad until you help. A bubble over its head shows what it wants most.
+It sleeps from 22:00 to 07:00, and when the screen dims, unless an agent is working: then it's at its laptop whatever the hour.
 
 It grows with time and use, and you can't race it. Each day counts 1, whether or not the daemon was running. Your agents' tokens that day add up to 2 more, quickly at first and then less and less: 100k tokens add 0.79, 1M add 1.99, and past that almost nothing. Only your 5 biggest days of a week count, so working through the weekend gains nothing. That makes the crown 61 days away at best. Level 2 takes 3, level 3 takes 12, level 4 takes 27, and so on. It earns a pilot's headset at level 3, an antenna at 5 and a crown at 8.
 
-- **It never dies, and it never beeps.** The chime only ever means an agent needs you.
+- **It never beeps.** The chime only ever means an agent needs you.
 - **Time brings keepsakes.** It wears a party hat on the first of every month, its birthday, and gets a scarf to keep at 100 days old. Nothing can speed these up, they don't affect growth, and missing a birthday costs nothing.
-- **Your answers don't feed it.** A turn earns the same snack whether it ran to the end or you denied it, so nothing rewards saying yes.
-- **Agents come first.** A new prompt or error leaves the home screen at once, and a new prompt also ends a game. Taps then don't count until they've stopped for 0.8 s, at least 1.5 s from the interruption, so someone mid-game can't hit Allow by accident.
-- **Time away costs nothing.** After 12 hours with no touch, no panel and no agent finishing, its needs wait for you, and it stops asking for anything. At most 12 hours pass while the daemon is off.
-- **It's glad you took a day off.** The first touch or panel opening after a whole day with no agents, it greets you rested and happy, with a bigger hello after 3 days or more. Its needs are topped up. That's all a day off does: it earns no growth, and nothing counts them.
-- **Tokens stay here.** Growth reads input and output tokens, never cache reads, from what Claude, Codex, OpenCode, Gemini and Pi record on this Mac. `~/.ttycat/token-days.json` keeps a number per day and where it got to in each log. An agent that doesn't record tokens adds nothing to growth, but its turns still earn snacks.
+- **Your answers don't count.** It grows from time and tokens, and Allow and Deny make no difference, so nothing rewards saying yes.
+- **Agents come first.** A new prompt or error leaves the home screen at once. Taps then don't count until they've stopped for 0.8 s, at least 1.5 s from the interruption, so nobody tapping away can hit Allow by accident.
+- **It's glad you took a day off.** The first touch or panel opening after a whole day with no agents, it greets you rested and happy, with a bigger hello after 3 days or more. That's all a day off does: it earns no growth, and nothing counts them.
+- **Tokens stay here.** Growth reads input and output tokens, never cache reads, from what Claude, Codex, OpenCode, Gemini and Pi record on this Mac. `~/.ttycat/token-days.json` keeps a number per day and where it got to in each log. An agent that doesn't record tokens adds nothing to growth.
 
-**In the Mac app:** the **Pet** tab has the same pet: Feed, Clean, Sleep and Wake up, a click on it to pat it, and the bug hunt, played with the mouse. It never sends a notification.
+**In the Mac app:** the **Pet** tab has the same Bit, its level and what's next. A click on it pats it, which gets a heart and nothing more. It never sends a notification.
 
-The two stay in step because neither one decides anything. The daemon numbers each bit of care (`ev`, `evk` in the state), and both show the reaction when they see the number change, whichever one it came from. Both draw Bit by the same rules: asleep, then at its laptop if an agent is working, then sad if it needs something. The board tells the daemon when its screen dims, because Bit dozes then. The panel checks four times a second while the Pet page is open, so a tap on the board shows there within about a quarter of a second. Where Bit wanders on the board's screen isn't shared: that's idle animation, and the panel has no room to wander in.
+The two stay in step because neither one decides anything. The daemon numbers each reaction (`ev`, `evk` in the state), and both show the reaction when they see the number change, whichever one it came from. Both draw Bit by the same rules: at its laptop if an agent is working, otherwise asleep at night or when the board's screen is dim. The board tells the daemon when its screen dims, because Bit dozes then. The panel checks four times a second while the Pet page is open, so a tap on the board shows there within about a quarter of a second. Where Bit wanders on the board's screen isn't shared: that's idle animation, and the panel has no room to wander in.
 
-The same rule keeps a game away from prompts here. While a prompt is waiting, the hunt can't start. A new prompt ends a game with no score and goes to Agents. The prompt's buttons then stay off for at least 1.5 s, and until clicks have stopped for 0.8 s, so nobody mid-game clicks Allow by accident. A prompt's buttons always wait for clicks to stop, however you got there. A new error leaves the page too, but lets a game finish. Closing the panel abandons a game, and opening it with something waiting shows that first.
+A new prompt or error leaves the Pet page for Agents. A prompt's buttons then stay off for at least 1.5 s, and until clicks have stopped for 0.8 s, so nobody clicking away hits Allow by accident. They always wait for clicks to stop, however you got there, and opening the panel with something waiting shows that first.
 
 Its state is in `~/.ttycat/pet.json`, so it survives reflashing. `demo` mode uses a separate pet in memory.
 
@@ -218,9 +210,9 @@ The design previews at 2x; the panel shows it at 1x, where some of the specified
 | Pixelify Sans 13 | 15 |
 | Press Start 2P 12 (LINK LOST) | 16 |
 
-The design's Idle board is now the pet's home screen, with a smaller clock to make room for the care buttons. It appears after 30 s untouched, not after 60 s with every agent idle.
+The design's Idle board is now Bit's home screen, with its level above the clock. It appears after 30 s untouched, not after 60 s with every agent idle.
 
-Added beyond the design: the swipe-up full view, row scrolling on the queue, machine names, the question screen and keyboard, the pet with its screens and game, the "All clear" tile on Overview, and "runs herdr focus" in place of "runs focusCommand".
+Added beyond the design: the swipe-up full view, row scrolling on the queue, machine names, the question screen and keyboard, the pet and its home screen, the "All clear" tile on Overview, and "runs herdr focus" in place of "runs focusCommand".
 
 ## Board notes
 
@@ -239,7 +231,7 @@ One JSON object per line, on the board's USB port. Other lines, such as boot and
 |---|---|
 | Daemon to board | `state` once a second (sessions, local time, history of the watched session, pet counts), `ack` after an answer |
 | Board to daemon | `hello`, `act` (allow, deny, answer, open, ask-mac, seen, and `pet-*`), `watch`, `touch` (logged) |
-| Testing, via `ttycatd.py` | `shot PATH` saves the real frame as a PNG; `tap X Y`, `swipe L\|R\|U\|D`, `goto SCREEN` (`queue`, `overview`, `tab:N`, `ask:ID`, `detail:ID`, `pet`, `game:bot`, `pet:heart`, `pet:reward`, `pet:level`, `pet:sleep`); in demo, `scene NAME` (including `question`, `questions`, `pet-hungry`, `pet-mess`, `pet-bored`, `pet-tired`, `pet-asleep`, `pet-lv5`) |
+| Testing, via `ttycatd.py` | `shot PATH` saves the real frame as a PNG; `tap X Y`, `swipe L\|R\|U\|D`, `goto SCREEN` (`queue`, `overview`, `tab:N`, `ask:ID`, `detail:ID`, `pet`, `pet:heart`, `pet:reward`, `pet:level`, `pet:sleep`); in demo, `scene NAME` (including `question`, `questions`, `pet-asleep`, `pet-old`, `pet-birthday`, `pet-lv5`) |
 
 **Only ttycat's own firmware can approve without being asked about.** A device that gives any other name in `hello`, or none, can see everything, open a session and Deny, but its `allow` and `answer` are refused, and it's told so with `na`, so the firmware shows "On Mac" where Allow was and brings the prompt up here. That's because it may have no way to show the whole prompt. For one that does, Setup > Firmware has **It can approve prompts**, off until you confirm, for that name only (`~/.ttycat/devices.json`). This guards against accidents. Each new build of your own asks again. It can't stop a device built to lie about its name.
 

@@ -1,18 +1,16 @@
-// The pet: how it looks and moves. What it needs is decided by the daemon (petstate.py).
+// Bit: how it looks and moves. How far it's grown is decided by the daemon (petstate.py).
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef enum { PET_NEED_NONE, PET_NEED_FOOD, PET_NEED_MESS, PET_NEED_TIRED, PET_NEED_BORED } pet_need_t;
-typedef enum { PET_HEART, PET_EAT, PET_SPARKLE, PET_RESTED, PET_WELCOME, PET_BIRTHDAY } pet_reaction_t;
+typedef enum { PET_HEART, PET_RESTED, PET_WELCOME, PET_BIRTHDAY } pet_reaction_t;
 
 typedef struct {
   bool asleep;
   bool birthday;    // a party hat, for the day
   bool scarf;       // what it keeps from its first 100 days
-  int level, poops;
+  int level;
   int working;      // agents at work: it works too, and any others get a small one each
-  pet_need_t need;  // shown in a bubble; anything but NONE also makes it sad
 } pet_look_t;
 
 // From what the daemon says it has grown. Level 2 at 3, 3 at 12, 4 at 27, 5 at 48.
@@ -23,7 +21,7 @@ int pet_progress(int32_t total, int of);
 // Stands on the line at y = 112.
 void pet_draw(int64_t now, const pet_look_t *look);
 void pet_react(int64_t now, pet_reaction_t what);
-// Agents finished `n` turns since it last looked.
+// Agents finished `n` turns since it last looked, or it reached a new level.
 void pet_reward(int n, bool level_up);
 void pet_bounds(int *x, int *y, int *w, int *h);
 // The mascot at its laptop, for wherever an agent is working: 16x14 dots of `dot` px.

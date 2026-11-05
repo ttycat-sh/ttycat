@@ -159,7 +159,6 @@ final class StatusPanel: NSObject {
     if let keys { NSEvent.removeMonitor(keys) }
     if let presses { NSEvent.removeMonitor(presses) }
     presses = nil
-    model.endHunt()  // a game doesn't go on behind a closed panel, and doesn't score
     model.petPageOpen(false)  // nobody's looking: the once-a-second update will do
     if let switches { NSWorkspace.shared.notificationCenter.removeObserver(switches) }
     if let screens { NotificationCenter.default.removeObserver(screens) }

@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "main.c" "gfx.c" "fonts.c" "ui.c" "link.c" "sound.c" "pet.c" "game.c" "keyboard.c"
+    SRCS "main.c" "gfx.c" "fonts.c" "ui.c" "link.c" "sound.c" "pet.c" "keyboard.c"
     INCLUDE_DIRS "."
     REQUIRES esp_driver_usb_serial_jtag esp_driver_uart esp_timer esp_hw_support json mbedtls nvs_flash)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-format-truncation)

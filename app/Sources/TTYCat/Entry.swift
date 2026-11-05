@@ -140,19 +140,12 @@ enum Preview {
     default:
       break
     }
-    var pet = PetInfo(name: "Bit", total: 30, today: 5, food: 70, fun: 60, energy: 80, snacks: 3, age: 3, asleep: false)
-    pet.best = 14
+    var pet = PetInfo(name: "Bit", total: 30, today: 5, age: 3, asleep: false)
     switch scene {
     case "pet-asleep": pet.asleep = true
     case "pet-birthday": pet.birthday = true
     case "pet-old": pet.age = 100
-    case "pet-sad":
-      pet.fun = 12
-      pet.need = "bored"
     case "pet-needs":
-      pet.food = 12
-      pet.need = "food"
-      pet.poops = 2
       pet.total = 200
       rows.insert(command, at: 0)
     default: break
@@ -161,12 +154,9 @@ enum Preview {
       model.page = .pet
       if scene != "pet-work" { rows = rows.filter { $0.s != "working" } }
     }
-    if scene == "pet-eat" { model.petEvent = PetEvent(kind: .eat, at: Date().addingTimeInterval(3600)) }
     if scene == "pet-level" { model.petEvent = PetEvent(kind: .reward, at: Date(), turns: 2, levelUp: true) }
     if scene == "pet-birthday" { model.petEvent = PetEvent(kind: .birthday, at: Date()) }
     if scene == "pet-hello" { model.petEvent = PetEvent(kind: .welcome, at: Date()) }
-    if scene == "pet-hunt" { model.hunt = HuntGame(previewAt: 9000, over: false, best: 14) }
-    if scene == "pet-score" { model.hunt = HuntGame(previewAt: 21500, over: true, best: 2) }
     let connected = !["unplugged", "fw-write", "welcome", "noboard", "fw-unknown"].contains(scene)
     let flashState = ["fw-write": "flashing", "fw-back": "restarting", "fw-fail": "failed"][scene] ?? "idle"
     model.status = scene == "stopped" ? nil : DaemonStatus(

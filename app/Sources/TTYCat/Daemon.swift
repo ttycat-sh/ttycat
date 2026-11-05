@@ -55,18 +55,11 @@ struct PetInfo: Decodable {
   var name: String
   var total: Int
   var today: Int
-  var food: Int
-  var fun: Int
-  var energy: Int
-  var snacks: Int
   var age: Int
   var asleep: Bool
   var birthday = false
-  var poops = 0
-  var best = 0
-  var need = ""  // the one thing it would ask for: food, mess, tired or bored
-  var ev: Int?     // numbers the latest care, from here or the board, so each is shown once
-  var evk: String? // what it looks like: eat, heart, sparkle, rested, welcome, birthday, or empty
+  var ev: Int?     // numbers the latest reaction, from here or the board, so each is shown once
+  var evk: String? // what it looks like: heart, rested, welcome, birthday, or empty
   var grown: Int?  // what its level comes from: time, and tokens
 
   var level: Int { Self.level(total: grown ?? total) }

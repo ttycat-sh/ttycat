@@ -12,10 +12,7 @@ enum Page: Equatable {
 @MainActor
 final class TTYCatModel: ObservableObject {
   @Published var status: DaemonStatus?
-  @Published var page = Page.agents {
-    didSet { if page != .pet { endHunt() } }
-  }
-  @Published var hunt: HuntGame?
+  @Published var page = Page.agents
   @Published var petEvent: PetEvent?
   @Published var icon = MenuIcon.make(pose: .nap, tick: 0, faded: true, needs: 0)
   @Published var toast: String?
@@ -367,25 +364,8 @@ final class TTYCatModel: ObservableObject {
     }
   }
 
-  func startHunt() {
-    guard let pet = status?.pet, hunt == nil else { return }
-    guard !pet.asleep, pet.energy >= 10 else {
-      show("\(pet.name) is \(pet.asleep ? "asleep" : "too tired")")
-      return
-    }
-    guard asks.isEmpty else { return }  // agents come first
-    hunt = HuntGame(best: pet.best) { [weak self] score in
-      self?.petAct("pet-play", arg: String(score))  // the daemon only hears the score
-    }
-  }
-
-  func endHunt() {
-    hunt?.stop()
-    hunt = nil
-  }
-
-  /// Agents come first, as on the board: something new leaves the pet at once, and ends a game
-  /// if it's a prompt. What was already waiting stays out of the way, with a line saying so.
+  /// Agents come first, as on the board: something new leaves the pet at once. What was already
+  /// waiting stays out of the way, with a line saying so.
   private func stepPet() {
     guard status != nil else { return }
     notePetEvents()
@@ -393,12 +373,11 @@ final class TTYCatModel: ObservableObject {
     let fresh = seenNeeds.map { now.subtracting($0) } ?? []
     seenNeeds = now
     guard page == .pet, !fresh.isEmpty else { return }
-    if hunt != nil, asks.isEmpty, hunt?.over == false { return }  // only an error: finish the hunt
     handsOffUntil = Date().addingTimeInterval(HandsOff.afterInterruption)
     page = .agents
   }
 
-  /// Care from either place, and turns agents finish, show the same here as on the board.
+  /// A pat from either place, and turns agents finish, show the same here as on the board.
   private func notePetEvents() {
     guard let pet = status?.pet else { return }
     if let seen = seenPetEv, pet.ev != seen, let kind = PetEvent.Kind(rawValue: pet.evk ?? "") {

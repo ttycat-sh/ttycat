@@ -3,7 +3,7 @@
 import AppKit
 import SwiftUI
 
-enum BitPose { case idle, blink, work, alert, happy, nap, sad, eat }
+enum BitPose { case idle, blink, work, alert, happy, nap }
 
 enum Ink { case body, shade, eye, glint, laptop, edge, logo, hand, gold, bulb }
 
@@ -49,7 +49,7 @@ func bitCells(_ pose: BitPose, tick: Int = 0, seed: Int = 0, level: Int = 0, bir
     put(11, 12, 2, 2, .body)
   }
   if pose != .nap && pose != .work {  // arms
-    let up = pose == .happy || pose == .alert || pose == .eat
+    let up = pose == .happy || pose == .alert
     put(0, ry(up ? 5 : 8), 1, 2, up ? .body : .shade)
     put(15, ry(up ? 5 : 8), 1, 2, up ? .body : .shade)
   }
@@ -81,23 +81,6 @@ func bitCells(_ pose: BitPose, tick: Int = 0, seed: Int = 0, level: Int = 0, bir
     put(12, ry(8), 2, 1, .shade)
     put(6, ry(8), 4, 1, .eye)
     put(7, ry(9), 2, 1, .eye)
-  case .sad:  // heavy lids
-    put(4, ry(6), 2, 2, .eye)
-    put(10, ry(6), 2, 2, .eye)
-    put(3, ry(5), 3, 1, .shade)
-    put(10, ry(5), 3, 1, .shade)
-    put(7, ry(8), 2, 1, .eye)
-    put(6, ry(9), 1, 1, .eye)
-    put(9, ry(9), 1, 1, .eye)
-  case .eat:
-    for c in [3, 10] {
-      put(c, ry(6), 1, 1, .eye)
-      put(c + 1, ry(5), 1, 1, .eye)
-      put(c + 2, ry(6), 1, 1, .eye)
-    }
-    put(2, ry(8), 2, 1, .shade)
-    put(12, ry(8), 2, 1, .shade)
-    put(6, ry(8), 4, tick % 2 == 0 ? 2 : 1, .eye)
   case .nap:
     put(3, ry(6), 3, 1, .eye)
     put(10, ry(6), 3, 1, .eye)

@@ -194,27 +194,15 @@ static void parse_state_msg(const cJSON *j) {
   next.pet_total = get_int(pet, "total", 0);
   next.pet_grown = get_int(pet, "grown", next.pet_total);
   next.pet_today = get_int(pet, "today", 0);
-  next.pet_food = (uint8_t)get_int(pet, "food", 0);
-  next.pet_fun = (uint8_t)get_int(pet, "fun", 0);
-  next.pet_energy = (uint8_t)get_int(pet, "energy", 0);
-  next.pet_poops = (uint8_t)get_int(pet, "poops", 0);
-  next.pet_snacks = (int16_t)get_int(pet, "snacks", 0);
   next.pet_age = (int16_t)get_int(pet, "age", 0);
-  next.pet_best = (int16_t)get_int(pet, "best", 0);
   next.pet_ev = get_int(pet, "ev", 0);
   char evk[10] = "";
   copy_str(evk, sizeof(evk), pet, "evk");
-  next.pet_evk = !strcmp(evk, "heart") ? PET_HEART : !strcmp(evk, "eat") ? PET_EAT : !strcmp(evk, "sparkle") ? PET_SPARKLE
-                 : !strcmp(evk, "rested") ? PET_RESTED : !strcmp(evk, "welcome") ? PET_WELCOME
+  next.pet_evk = !strcmp(evk, "heart") ? PET_HEART : !strcmp(evk, "rested") ? PET_RESTED : !strcmp(evk, "welcome") ? PET_WELCOME
                  : !strcmp(evk, "birthday") ? PET_BIRTHDAY : -1;
   next.pet_birthday = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(pet, "birthday"));
   next.pet_asleep = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(pet, "asleep"));
   copy_str(next.pet_name, sizeof(next.pet_name), pet, "name");
-  char need[8];
-  copy_str(need, sizeof(need), pet, "need");
-  next.pet_need = !strcmp(need, "food") ? PET_NEED_FOOD
-                : !strcmp(need, "mess") ? PET_NEED_MESS : !strcmp(need, "tired") ? PET_NEED_TIRED
-                : !strcmp(need, "bored") ? PET_NEED_BORED : PET_NEED_NONE;
   // Left out when both are the default: an older daemon, or nothing chosen.
   const cJSON *look = cJSON_GetObjectItemCaseSensitive(j, "look");
   const cJSON *skin = cJSON_GetArrayItem(look, 0), *accent = cJSON_GetArrayItem(look, 1);

@@ -129,20 +129,13 @@ void m_hist(const char *id, const char *age, int tone, const char *text) {
   h->tone = (uint8_t)tone;
 }
 
-void m_pet(int total, int today, int grown, int food, int fun, int energy, int poops, int need, int asleep, int birthday, int snacks, int age, int best, int ev, int evk) {
+void m_pet(int total, int today, int grown, int asleep, int birthday, int age, int ev, int evk) {
   m.pet_total = total;
   m.pet_today = today;
   m.pet_grown = grown;
-  m.pet_food = (uint8_t)food;
-  m.pet_fun = (uint8_t)fun;
-  m.pet_energy = (uint8_t)energy;
-  m.pet_poops = (uint8_t)poops;
-  m.pet_need = (uint8_t)need;
   m.pet_asleep = asleep;
   m.pet_birthday = birthday;
-  m.pet_snacks = (int16_t)snacks;
   m.pet_age = (int16_t)age;
-  m.pet_best = (int16_t)best;
   m.pet_ev = ev;
   m.pet_evk = (int8_t)evk;
 }

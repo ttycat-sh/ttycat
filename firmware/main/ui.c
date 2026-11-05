@@ -11,7 +11,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
-#include "game.h"
 #include "gfx.h"
 #include "keyboard.h"
 #include "link.h"
@@ -48,11 +47,6 @@ static icon5_t I_CHECK = {0x01, 0x03, 0x16, 0x1C, 0x08};
 static icon5_t I_BANG = {0x04, 0x04, 0x04, 0x00, 0x04};
 static icon5_t I_DOTS = {0x00, 0x00, 0x15, 0x00, 0x00};
 static icon5_t I_DASH = {0x00, 0x00, 0x0E, 0x00, 0x00};
-static icon5_t I_FOOD = {0x04, 0x0E, 0x1F, 0x1F, 0x0E};
-static icon5_t I_BUG = {0x11, 0x0E, 0x1F, 0x0E, 0x11};
-static icon5_t I_BROOM = {0x01, 0x02, 0x04, 0x0E, 0x1F};
-static icon5_t I_MOON = {0x0E, 0x18, 0x18, 0x18, 0x0E};
-static icon5_t I_SUN = {0x15, 0x0E, 0x1F, 0x0E, 0x15};
 
 // 10x10 sprites.
 static const char *const S_ALERT[10] = {"....oo....", "...oooo...", "...oooo...", "...oooo...", "....oo....",
@@ -64,7 +58,7 @@ static const char *const S_CHECK[10] = {"..........", ".........g", "........gg"
 static const char *const S_SLEEP[10] = {"..........", "......ooo.", ".......o..", "......ooo.", ".www......",
                                         "...w......", "..w.......", ".www......", "..........", "wwwwwwwwww"};
 
-typedef enum { SCR_BOOT, SCR_OVERVIEW, SCR_QUEUE, SCR_ASK, SCR_DIFF, SCR_DETAIL, SCR_LOST, SCR_PET, SCR_GAME, SCR_CHOICE, SCR_KEYS } screen_t;
+typedef enum { SCR_BOOT, SCR_OVERVIEW, SCR_QUEUE, SCR_ASK, SCR_DIFF, SCR_DETAIL, SCR_LOST, SCR_PET, SCR_CHOICE, SCR_KEYS } screen_t;
 
 typedef enum {
   A_NONE,
@@ -87,8 +81,6 @@ typedef enum {
   A_ALERT,
   A_PET_OPEN,
   A_PET,
-  A_CARE,
-  A_GAME_DONE,
 } action_t;
 
 typedef struct {
@@ -110,7 +102,6 @@ enum {
   ACK_TIMEOUT_MS = 3000,
   OPEN_TIMEOUT_MS = 9000,   // the daemon gives up on focusing the Mac after 8 s
   OPENED_MS = 2500,         // how long the button confirms it worked
-  GAME_DONE_DELAY_MS = 900, // frantic taps at the end don't dismiss the score
   HANDS_OFF_MS = 1500,      // an ask interrupted the pet: see leave_pet_for_ask()
   HANDS_OFF_MORE_MS = 800,
   TOAST_MS = 3000,
@@ -143,10 +134,6 @@ static int64_t opening_since, opened_until;
 static int32_t pet_seen;
 static int pet_level_seen;
 static int pet_hello = -1;       // a welcome back, saved for when the pet's on screen to give it
-static int pet_pending = -1;     // waiting for the daemon to answer some care: one at a time
-static int64_t pet_pending_since;
-static bool game_over, game_new_best;
-static int64_t game_over_at;
 static int64_t hands_off_until;
 static int32_t pet_ev_seen;
 static volatile bool dim_resend;
@@ -435,14 +422,12 @@ static void draw_boot(void) {
 static void draw_pet_stage(void) {
   int working = count_state(ST_WORKING);
   pet_look_t look = {
-      // a dim screen sends it to sleep, unless there's work on
-      .asleep = (dimmed && !working) || model.pet_asleep,
+      // night, or a dim screen, sends it to sleep, unless there's work on
+      .asleep = (dimmed || model.pet_asleep) && !working,
       .working = working,
       .level = pet_level(model.pet_grown),
       .birthday = model.pet_birthday,
       .scarf = model.pet_age >= 100,
-      .poops = model.pet_poops,
-      .need = (pet_need_t)model.pet_need,
   };
   pet_draw(now_ms(), &look);
 }
@@ -452,21 +437,12 @@ static void open_home(void) {
   go(SCR_PET);
 }
 
-static void meter(int y, const char *label, int value, bool low) {
-  gfx_caps(&sk9, 126, y + 1, MUTED, label, 0);
-  int filled = (value * 8 + 50) / 100;
-  if (value > 0 && filled == 0) filled = 1;
-  for (int i = 0; i < 8; i++)
-    gfx_fill(164 + i * 9, y + 1, 7, 8, i < filled ? (low ? WHITE : ORANGE) : DOT_OFF);
+// What the next level brings, or that it's all there.
+static const char *next_keepsake(int level) {
+  return level < 3 ? "headset at level 3" : level < 5 ? "antenna at level 5" : level < 8 ? "crown at level 8" : "wearing its crown";
 }
 
-static void care_button(int x, int y, const char *label, icon5_t icon, bool loud, bool enabled, int arg) {
-  color_t ink = !enabled ? FAINT : loud ? BLACK : WHITE;
-  button(x, y, 111, 52, loud && enabled ? ORANGE : TILE, loud && enabled ? NULL : &c_line, icon, 2, ink, 6, &sk9, ink, label, 1);
-  hit(x, y, 111, 52, A_CARE, arg);
-}
-
-// Home: the pet, the time, how the agents are doing, and the care buttons.
+// Home: the pet and how far it's come, the time, and how the agents are doing.
 static void draw_pet_screen(void) {
   gfx_icon(I_LEFT, 6, 8, 1, WHITE);
   int ax = gfx_caps(&sk9, 15, 5, WHITE, "Agents", 0);
@@ -493,98 +469,48 @@ static void draw_pet_screen(void) {
   pet_bounds(&px, &py, &pw, &ph);
   hit(px, py, pw, ph, A_PET, 0);
 
-  // the desk clock, beside how the pet is doing
+  // how far it's come
+  char line[44];
+  snprintf(line, sizeof(line), "LV %d", level);
+  gfx_text(&vt18, 6, 118, WHITE, model.pet_name);
+  gfx_right(&vt18, 234, 118, ORANGE, line);
+  enum { CELLS = 19, CELL = 12 };
+  int filled = pet_progress(model.pet_grown, CELLS);
+  for (int i = 0; i < CELLS; i++) gfx_fill(6 + i * CELL, 138, CELL - 2, 8, i < filled ? ORANGE : DOT_OFF);
+  gfx_text(&vt16, 6, 150, MUTED, next_keepsake(level));
+  snprintf(line, sizeof(line), "%d day%s old", model.pet_age, model.pet_age == 1 ? "" : "s");
+  gfx_right(&vt16, 234, 150, MUTED, line);
+
+  // the desk clock
   struct tm t;
   clock_parts(&t);
   char hh[3], mm[3], date[20];
   snprintf(hh, sizeof(hh), "%02d", t.tm_hour);
   snprintf(mm, sizeof(mm), "%02d", t.tm_min);
-  int x = gfx_text_sp(&ps24, 6, 120, WHITE, hh, -2);
-  x = gfx_text_sp(&ps24, x, 120, ORANGE, ":", -2);
-  gfx_text_sp(&ps24, x, 120, WHITE, mm, -2);
+  int w = gfx_width(&ps40, hh, -2) + gfx_width(&ps40, ":", -2) + gfx_width(&ps40, mm, -2);
+  int x = gfx_text_sp(&ps40, (SCR_W - w) / 2, 180, WHITE, hh, -2);
+  x = gfx_text_sp(&ps40, x, 180, ORANGE, ":", -2);
+  gfx_text_sp(&ps40, x, 180, WHITE, mm, -2);
   static const char *const days[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
   static const char *const months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
                                        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
   snprintf(date, sizeof(date), "%s %d %s", days[t.tm_wday], t.tm_mday, months[t.tm_mon]);
-  gfx_caps(&sk9, 8, 150, MUTED, date, 1);
-  meter(120, "Food", model.pet_food, model.pet_food < 25);
-  meter(136, "Fun", model.pet_fun, model.pet_fun < 25);
-  meter(152, "Rest", model.pet_energy, model.pet_energy < 20);
+  gfx_center(&sk9, 0, SCR_W, 228, MUTED, date, 1);
 
-  char line[44];
-  snprintf(line, sizeof(line), "%s \xB7 LV %d \xB7 %d snack%s", model.pet_name, pet_level(model.pet_grown), model.pet_snacks,
-           model.pet_snacks == 1 ? "" : "s");
-  gfx_center(&vt16, 0, SCR_W, 168, WHITE, line, 0);
+  // how the agents are doing
   int working = count_state(ST_WORKING), done = count_state(ST_DONE);
   if (done) snprintf(line, sizeof(line), "%d done \xB7 %d working \xB7 tap to see", done, working);
   else if (working) snprintf(line, sizeof(line), "%d agent%s working", working, working == 1 ? "" : "s");
-  else snprintf(line, sizeof(line), "%d turn%s today \xB7 %d day%s old", (int)model.pet_today, model.pet_today == 1 ? "" : "s",
-                model.pet_age, model.pet_age == 1 ? "" : "s");
-  gfx_center(&vt16, 0, SCR_W, 186, done ? GREEN : MUTED, line, 0);
-  hit(0, 166, SCR_W, 38, A_QUEUE, 0);
-
-  bool awake = !model.pet_asleep;
-  care_button(6, 206, "Feed", I_FOOD, awake && model.pet_need == PET_NEED_FOOD, awake, 0);
-  care_button(123, 206, "Hunt bugs", I_BUG, awake && model.pet_need == PET_NEED_BORED, awake, 1);
-  care_button(6, 262, "Clean", I_BROOM, awake && model.pet_need == PET_NEED_MESS, awake && model.pet_poops, 2);
-  care_button(123, 262, awake ? "Sleep" : "Wake up", awake ? I_MOON : I_SUN, !awake || model.pet_need == PET_NEED_TIRED, true, 3);
+  else snprintf(line, sizeof(line), "%d turn%s today", (int)model.pet_today, model.pet_today == 1 ? "" : "s");
+  gfx_box(6, 256, 228, 52, TILE, &c_line, BLACK);
+  gfx_center(&vt18, 0, SCR_W, 273, done ? GREEN : WHITE, line, 0);
+  hit(6, 256, 228, 52, A_QUEUE, 0);
 }
 
-static void draw_game(void) {
-  int64_t now = now_ms();
-  if (!game_over && game_draw(now)) {
-    char score[8];
-    game_over = true;
-    game_over_at = now;
-    last_touch_ms = now;  // the score gets its full time on screen
-    game_new_best = game_score() > model.pet_best;
-    snprintf(score, sizeof(score), "%d", game_score());
-    link_act("pet-play", "", score);
-    pet_pending = 99;
-    pet_pending_since = now;
-  }
-  if (!game_over) return;
-
-  gfx_dashed(6, 112, 228, 2, LINE);
-  draw_pet_stage();
-  char num[8];
-  snprintf(num, sizeof(num), "%d", game_score());
-  gfx_center(&ps40, 0, SCR_W, 124, ORANGE, num, 0);
-  gfx_center(&vt18, 0, SCR_W, 170, WHITE, game_score() == 1 ? "bug squashed" : "bugs squashed", 0);
-  char best[24];
-  if (game_new_best) snprintf(best, sizeof(best), "new best!");
-  else snprintf(best, sizeof(best), "best %d", model.pet_best);
-  gfx_center(&vt18, 0, SCR_W, 194, game_new_best ? GREEN : MUTED, best, 0);
-  bool ready = now - game_over_at >= GAME_DONE_DELAY_MS;
-  button(6, 250, 228, 60, ready ? ORANGE : TILE, ready ? NULL : &c_line, NULL, 0, 0, 0, &sk11, ready ? BLACK : FAINT, "Done", 2);
-  if (ready) hit(6, 250, 228, 60, A_GAME_DONE, 0);
-}
-
-static void care(int what) {
-  static const char *const acts[4] = {"pet-feed", NULL, "pet-clean", "pet-sleep"};
-  int64_t now = now_ms();
-  if (pet_pending >= 0 && now - pet_pending_since < ACK_TIMEOUT_MS) return;
-  if (what == 1) {  // the hunt is played here; the daemon only hears the score
-    if (model.pet_asleep || model.pet_energy < 10) {
-      snprintf(toast, sizeof(toast), "%s is %s", model.pet_name, model.pet_asleep ? "asleep" : "too tired");
-      toast_until = now + TOAST_MS;
-      return;
-    }
-    game_begin(now, false);
-    game_over = false;
-    go(SCR_GAME);
-    return;
-  }
-  link_act(acts[what], "", NULL);
-  pet_pending = 99;  // just waiting for the reply: the reaction comes with the state, as it does for the Mac's
-  pet_pending_since = now;
-}
-
-// An ask ended the pet's turn. Whoever was tapping away at bugs or buttons is still
-// tapping, and the next screens hold Allow, so nothing counts until the taps stop.
+// An ask took the screen. Whoever was tapping is still tapping, and the next screens
+// hold Allow, so nothing counts until the taps stop.
 static void leave_pet_for_ask(void) {
   hands_off_until = now_ms() + HANDS_OFF_MS;
-  game_over = false;
   go(SCR_QUEUE);
 }
 
@@ -682,8 +608,9 @@ static void draw_overview(void) {
     int nw = gfx_caps_width(&sk9, model.pet_name, 0);
     gfx_caps(&sk9, 204 - nw, 277, WHITE, model.pet_name, 0);
     gfx_icon(I_RIGHT, 214, 283, 2, WHITE);
-    static const char *const asks[] = {"", "is hungry", "made a mess", "is tired", "is bored"};
-    gfx_right(&vt14, 204, 290, model.pet_need ? ORANGE : FAINT, model.pet_asleep ? "asleep" : model.pet_need ? asks[model.pet_need] : "is fine");
+    char lv[12];
+    snprintf(lv, sizeof(lv), "LV %d", pet_level(model.pet_grown));
+    gfx_right(&vt14, 204, 290, FAINT, model.pet_asleep ? "asleep" : lv);
     hit(6, 268, 228, 46, A_PET_OPEN, 0);
   }
 }
@@ -1273,11 +1200,6 @@ static void do_action(const hit_t *h) {
     case A_PET:
       link_act("pet-pat", "", NULL);
       break;
-    case A_CARE: care(h->arg); break;
-    case A_GAME_DONE:
-      game_over = false;
-      go(SCR_PET);
-      break;
     default: break;
   }
 }
@@ -1364,7 +1286,6 @@ static void touch_poll(void) {
     wake_swallow = dimmed || hands_off(now);
     undim();
     pressed = wake_swallow ? -1 : hit_at(x, y);
-    if (screen == SCR_GAME && !wake_swallow && !game_over) game_touch(x, y, now);  // on the press: it's a game
   } else if (!now_down && down) {
     down = false;
     pressed = -1;
@@ -1398,7 +1319,7 @@ static void notice_new_asks(void) {
     if (known || first_state) continue;
     sound_chime();
     undim();
-    if (screen == SCR_PET || screen == SCR_GAME) leave_pet_for_ask();
+    if (screen == SCR_PET) leave_pet_for_ask();
     if (screen == SCR_QUEUE && tab != 0 && strcmp(s->agent, TAB_CODES[tab])) {
       strlcpy(alert_id, s->id, sizeof(alert_id));
       alert_until = now_ms() + ALERT_MS;
@@ -1449,10 +1370,6 @@ static void handle_goto(const char *name) {
   if (!strcmp(name, "pet")) {
     last_touch_ms = now_ms();
     go(SCR_PET);
-  } else if (!strcmp(name, "game:bot")) {
-    game_begin(now_ms(), true);
-    game_over = false;
-    go(SCR_GAME);
   } else if (!strcmp(name, "pet:birthday")) {
     pet_react(now_ms(), PET_BIRTHDAY);
   } else if (!strcmp(name, "pet:heart")) {
@@ -1514,11 +1431,6 @@ static void step_navigation(void) {
     }
   }
   if (screen == SCR_DETAIL && !find_session(cur_id)) go(SCR_QUEUE);
-  if (pet_pending >= 0 && now - pet_pending_since > ACK_TIMEOUT_MS) {
-    pet_pending = -1;
-    strlcpy(toast, "no reply from the Mac", sizeof(toast));
-    toast_until = now + TOAST_MS;
-  }
   if (opening && now - opening_since > OPEN_TIMEOUT_MS) {
     opening = false;
     strlcpy(toast, "no reply from the Mac", sizeof(toast));
@@ -1532,10 +1444,8 @@ static void step_navigation(void) {
 
   // Home when untouched, unless something needs you: the pet must never hide that.
   bool need = need_total() > 0;
-  bool between = screen == SCR_QUEUE || screen == SCR_OVERVIEW || screen == SCR_DETAIL ||
-                 (screen == SCR_GAME && game_over);
+  bool between = screen == SCR_QUEUE || screen == SCR_OVERVIEW || screen == SCR_DETAIL;
   if (between && !need && now - last_touch_ms > HOME_AFTER_MS) {
-    game_over = false;
     go(SCR_PET);
   }
   if (screen == SCR_PET) {
@@ -1572,8 +1482,7 @@ void ui_tick(void) {
           undim();
           break;
         }
-        if (screen == SCR_GAME && !game_over) game_touch(ev.x, ev.y, now_ms());
-        else if (screen == SCR_KEYS) keyboard_finished_if(keyboard_release(ev.x, ev.y, now_ms()));
+        if (screen == SCR_KEYS) keyboard_finished_if(keyboard_release(ev.x, ev.y, now_ms()));
         else on_tap(ev.x, ev.y);
         break;
       case UI_EV_SWIPE:
@@ -1584,9 +1493,6 @@ void ui_tick(void) {
       case UI_EV_SHOT: shot = true; break;
       case UI_EV_ACK:
         answering = false;
-        if (pet_pending >= 0) {
-          pet_pending = -1;
-        }
         if (opening) {
           opening = false;
           if (ev.ok) opened_until = now_ms() + OPENED_MS;
@@ -1622,7 +1528,6 @@ void ui_tick(void) {
       keyboard_draw(now_ms(), down && !wake_swallow, last_x, last_y);
       break;
     case SCR_PET: draw_pet_screen(); break;
-    case SCR_GAME: draw_game(); break;
     case SCR_DETAIL:
       if (cur) draw_detail(cur);
       break;
@@ -1632,9 +1537,9 @@ void ui_tick(void) {
   }
   draw_pressed();
   if (now_ms() < toast_until) {
-    int ty = screen == SCR_PET ? 184 : 296;  // the care screen's buttons reach the bottom
-    gfx_fill(0, ty, SCR_W, screen == SCR_PET ? 18 : 24, BLACK);
-    gfx_center(&vt16, 0, SCR_W, ty + (screen == SCR_PET ? 2 : 4), ORANGE, toast, 0);
+    int ty = 296;
+    gfx_fill(0, ty, SCR_W, 24, BLACK);
+    gfx_center(&vt16, 0, SCR_W, ty + 4, ORANGE, toast, 0);
   }
   xSemaphoreGive(model_lock);
   board_flush();

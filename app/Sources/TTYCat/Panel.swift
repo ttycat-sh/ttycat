@@ -431,21 +431,14 @@ private struct PetStrip: View {
   var body: some View {
     Button { m.page = .pet } label: { strip }
       .buttonStyle(PixelPress())
-      .help("Look after \(pet.name)")
+      .help("See \(pet.name)")
   }
 
   private var strip: some View {
     HStack(alignment: .center, spacing: 8) {
       VStack(alignment: .leading, spacing: 2) {
         Text(pet.name).font(Pixel.title).foregroundStyle(Palette.white)
-        Text("LV \(pet.level) \u{B7} \(pet.snacks) snack\(pet.snacks == 1 ? "" : "s")")
-          .font(Pixel.small).foregroundStyle(Palette.muted)
-      }
-      Spacer(minLength: 0)
-      VStack(alignment: .trailing, spacing: 3) {
-        PixelMeter(label: "Food", value: pet.food, low: pet.food < 25)
-        PixelMeter(label: "Fun", value: pet.fun, low: pet.fun < 25)
-        PixelMeter(label: "Rest", value: pet.energy, low: pet.energy < 20)
+        LevelProgress(pet: pet)
       }
     }
     .padding(8)
