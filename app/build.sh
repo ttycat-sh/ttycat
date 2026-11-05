@@ -23,7 +23,10 @@ cp "$ROOT"/tools/fonts/*.ttf "$ROOT"/tools/fonts/OFL-*.txt "$APP/Contents/Resour
 # app/release.sh points this at the release build.
 FIRMWARE=${TTYCAT_FIRMWARE_BUILD:-$ROOT/firmware/build}
 if [ -f "$FIRMWARE/flasher_args.json" ]; then
-  python3 "$ROOT/tools/firmware_bundle.py" "$FIRMWARE" "$APP/Contents/Resources/firmware"
+  # A firmware build it can't use mustn't stop here: an app with no Info.plist crashes when it's opened.
+  # It goes without, as with no build at all, and app/release.sh won't release one like that.
+  python3 "$ROOT/tools/firmware_bundle.py" "$FIRMWARE" "$APP/Contents/Resources/firmware" \
+    || echo "warning: that firmware build can't be used; this app can't update the board" >&2
   if [ -n "$(find "$ROOT/firmware/main" "$ROOT/firmware/boards" -newer "$FIRMWARE/ttycat.bin" -print -quit)" ]; then
     echo "warning: firmware has changes that aren't built; the app carries the older build" >&2
   fi
