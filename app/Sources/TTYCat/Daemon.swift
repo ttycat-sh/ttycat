@@ -85,6 +85,12 @@ struct BoardInfo: Decodable {
   var fw: String?
   var dim: Bool?  // its screen is dim, and Bit dozes there
   var approves: Bool?  // it may say yes to prompts: see daemon/devices.py
+  var name: String?  // which folder in firmware/boards it was built from
+  var outdated: Bool?  // it speaks another version of the protocol, so it's not being sent anything
+  var silent: [String]?  // ports that were tried and said nothing
+  var probing: Bool?  // trying one now
+  var asks: Int?  // times it's asked for a prompt to be shown here
+  var asked: String?
 }
 
 struct MachineInfo: Decodable {

@@ -91,8 +91,8 @@ herdr isn't required, on this Mac or on other machines. A session outside it jus
 - **Only a release says it's ttycat's firmware.** `tools/release_firmware.sh` builds it into `firmware/build-release`, and `app/release.sh` won't go without it. Anything else built from source says something like `custom-0.9.1-a1b2c3d4` (set `FW_LABEL` for your own first word), where the end comes from the source, so every change has a new name.
 - **Your own firmware keeps its place.** The app never offers to update custom firmware, and Setup only replaces it if you ask to and confirm.
 - It uses esptool from your ESP-IDF install (`~/.espressif/python_env`). Without it, Setup says so.
-- Each file's hash is checked before anything's written, and esptool refuses a board with a different chip.
-- If an update fails partway, the board stops answering and Setup offers **Reinstall firmware**. That's asked twice and names the port, because a port that doesn't answer could be another device: the daemon uses the first `/dev/cu.usbmodem*` it finds. If it can't connect, hold BOOT while plugging the board in.
+- Each file's hash is checked before anything's written, esptool refuses a board with a different chip, and firmware made for another board is refused.
+- If an update fails partway, the board stops answering and Setup offers **Reinstall firmware**. That's asked twice and names the port, because a port that doesn't answer could be another device. The daemon tries each serial port once and stays with the first that says hello, so a silent one is only ever touched if you say so. If it can't connect, hold BOOT while plugging the board in.
 
 **By hand**, which needs ESP-IDF 5.5:
 
@@ -238,10 +238,10 @@ One JSON object per line, on the board's USB port. Other lines, such as boot and
 | Direction | Message |
 |---|---|
 | Daemon to board | `state` once a second (sessions, local time, history of the watched session, pet counts), `ack` after an answer |
-| Board to daemon | `hello`, `act` (allow, deny, answer, open, seen, and `pet-*`), `watch`, `touch` (logged) |
+| Board to daemon | `hello`, `act` (allow, deny, answer, open, ask-mac, seen, and `pet-*`), `watch`, `touch` (logged) |
 | Testing, via `ttycatd.py` | `shot PATH` saves the real frame as a PNG; `tap X Y`, `swipe L\|R\|U\|D`, `goto SCREEN` (`queue`, `overview`, `tab:N`, `ask:ID`, `detail:ID`, `pet`, `game:bot`, `pet:heart`, `pet:reward`, `pet:level`, `pet:sleep`); in demo, `scene NAME` (including `question`, `questions`, `pet-hungry`, `pet-mess`, `pet-bored`, `pet-tired`, `pet-asleep`, `pet-lv5`) |
 
-**Only ttycat's own firmware can approve without being asked about.** A device that gives any other name in `hello`, or none, can see everything, open a session and Deny, but its `allow` and `answer` are refused. That's because it may have no way to show the whole prompt. For one that does, Setup > Firmware has **It can approve prompts**, off until you confirm, for that name only (`~/.ttycat/devices.json`). This guards against accidents. Each new build of your own asks again. It can't stop a device built to lie about its name.
+**Only ttycat's own firmware can approve without being asked about.** A device that gives any other name in `hello`, or none, can see everything, open a session and Deny, but its `allow` and `answer` are refused, and it's told so with `na`, so the firmware shows "On Mac" where Allow was and brings the prompt up here. That's because it may have no way to show the whole prompt. For one that does, Setup > Firmware has **It can approve prompts**, off until you confirm, for that name only (`~/.ttycat/devices.json`). This guards against accidents. Each new build of your own asks again. It can't stop a device built to lie about its name.
 
 `tap` goes through the same code as a finger, so anything on this Mac running as you can answer prompts the board is showing. The same is true of anything that can type into your terminal. The hook socket, `~/.ttycat/hook.sock`, is only readable by you.
 

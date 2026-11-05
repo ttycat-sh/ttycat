@@ -1,18 +1,19 @@
 import Testing
 @testable import TTYCat
 
-private func status(fw: String?, connected: Bool = true, state: String = "idle", tool: Bool = true, flash: Bool = true) -> DaemonStatus {
+private func status(fw: String?, connected: Bool = true, state: String = "idle", tool: Bool = true, flash: Bool = true,
+                    name: String? = "this-board", outdated: Bool = false, silent: [String] = [], probing: Bool = false) -> DaemonStatus {
   DaemonStatus(
     pid: 1, s: [], pet: nil,
-    board: BoardInfo(connected: connected, port: connected ? "/dev/cu.usbmodem1101" : nil, fw: fw),
+    board: BoardInfo(connected: connected, port: connected ? "/dev/cu.usbmodem1101" : nil, fw: fw, name: name, outdated: outdated, silent: silent, probing: probing),
     machines: [],
     flash: flash ? FlashInfo(state: state, pct: 40, msg: "", to: "0.7.0", tool: tool) : nil)
 }
 
-private let image = FirmwareImage(version: "0.7.0")
+private let image = FirmwareImage(version: "0.7.0", board: "this-board")
 
-private func plan(_ s: DaemonStatus?, image i: FirmwareImage? = image, silent: Double = 0) -> FirmwarePlan {
-  FirmwarePlan.make(status: s, image: i, silent: silent)
+private func plan(_ s: DaemonStatus?, image i: FirmwareImage? = image) -> FirmwarePlan {
+  FirmwarePlan.make(status: s, image: i)
 }
 
 @Test func versionsCompareByNumber() {
@@ -38,11 +39,21 @@ private func plan(_ s: DaemonStatus?, image i: FirmwareImage? = image, silent: D
 }
 
 @Test func customFirmwareIsNeverOfferedAnUpdate() {
-  let lamp = FirmwarePlan.customFirmware(name: "my-lamp-1.0", port: "cu.usbmodem1101", canReplace: true)
+  let lamp = FirmwarePlan.customFirmware(name: "my-lamp-1.0", port: "cu.usbmodem1101", canReplace: true, outdated: false)
   #expect(plan(status(fw: "my-lamp-1.0")) == lamp)
   #expect(!plan(status(fw: "my-lamp-1.0")).wantsAttention)
-  #expect(plan(status(fw: "dev")) == .customFirmware(name: "dev", port: "cu.usbmodem1101", canReplace: true))
-  #expect(plan(status(fw: "my-lamp-1.0", tool: false)) == .customFirmware(name: "my-lamp-1.0", port: "cu.usbmodem1101", canReplace: false))
+  #expect(plan(status(fw: "dev")) == .customFirmware(name: "dev", port: "cu.usbmodem1101", canReplace: true, outdated: false))
+  #expect(plan(status(fw: "my-lamp-1.0", tool: false)) == .customFirmware(name: "my-lamp-1.0", port: "cu.usbmodem1101", canReplace: false, outdated: false))
+}
+
+@Test func firmwareForAnotherBoardIsNeverOffered() {
+  for other in ["another-board", nil] as [String?] {
+    #expect(plan(status(fw: "my-lamp-1.0", name: other)) == .customFirmware(name: "my-lamp-1.0", port: "cu.usbmodem1101", canReplace: false, outdated: false))
+  }
+}
+
+@Test func anOutdatedPortIsToldSo() {
+  #expect(plan(status(fw: "my-lamp-1.0", outdated: true)) == .customFirmware(name: "my-lamp-1.0", port: "cu.usbmodem1101", canReplace: true, outdated: true))
 }
 
 @Test func onlyPlainVersionsAreOurs() {
@@ -50,9 +61,10 @@ private func plan(_ s: DaemonStatus?, image i: FirmwareImage? = image, silent: D
   for theirs in ["custom-0.9.1-7e297979", "my-lamp-1.0", "dev", "0.9.1-mine", "1..2", "+1.2", ""] { #expect(FirmwareVersion.isCustom(theirs)) }
 }
 
-@Test func aSilentPortGetsTimeBeforeItCountsAsUnknown() {
-  #expect(plan(status(fw: nil), silent: 3) == .identifying)
-  #expect(plan(status(fw: nil), silent: 9) == .unknownDevice(port: "cu.usbmodem1101"))
+@Test func aPortOnlyCountsAsUnknownOnceItsHadItsChance() {
+  #expect(plan(status(fw: nil, connected: false, probing: true)) == .identifying)
+  #expect(plan(status(fw: nil, connected: false, silent: ["/dev/cu.usbmodem1101"])) == .unknownDevice(port: "/dev/cu.usbmodem1101"))
+  #expect(plan(status(fw: nil, connected: false, tool: false, silent: ["/dev/cu.usbmodem1101"])) == .noTool(to: "0.7.0"))
 }
 
 @Test func nothingToOfferWithoutImageBoardOrTool() {

@@ -11,7 +11,8 @@
 #define QUESTION_MAX 4     // in one ask
 #define OPTION_MAX 4       // in one question
 #define TYPED_MAX 200      // a typed answer
-#define FW_VERSION "0.9.1"
+#define FW_VERSION "0.10.0"
+#define FW_PROTOCOL "1"  // docs/PROTOCOL.md: goes up when a change would break devices already built
 #define FW_LABEL "custom"  // your own build's name, shown in the app's Setup
 
 // What this build tells the Mac it runs. A plain version is what makes it ttycat's own, and able to
@@ -24,6 +25,9 @@
 #define FW_BUILD_ID "unbuilt"
 #endif
 #define FW_NAME FW_LABEL "-" FW_VERSION "-" FW_BUILD_ID
+#endif
+#ifndef FW_BOARD
+#define FW_BOARD "unbuilt"  // which folder in boards/, from main/CMakeLists.txt
 #endif
 
 // In the order the queue sorts them.
@@ -79,6 +83,7 @@ typedef struct {
   int32_t pet_ev;  // numbers the latest care, from here or the Mac
   int8_t pet_evk;  // what it looks like: a pet_reaction_t, or -1 for nothing
   char pet_name[12];
+  bool no_approve;  // the Mac won't take Allow or answers from this build until the person says so
   char text[BODY_POOL];          // text[0] is always the empty string
   int text_used;
   question_t q[MAX_QUESTIONS];

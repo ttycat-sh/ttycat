@@ -14,6 +14,7 @@ struct FlashInfo: Decodable {
 /// The firmware this copy of the app carries: app/build.sh packs it from firmware/build.
 struct FirmwareImage: Decodable {
   let version: String
+  var board: String? = nil
 
   static var folder: String? { Bundle.main.resourceURL?.appendingPathComponent("firmware").path }
 
@@ -52,7 +53,7 @@ enum FirmwarePlan: Equatable {
   case notConnected
   case identifying                // just connected: it says what it runs within seconds
   case unknownDevice(port: String)  // a port that doesn't answer: could be any device
-  case customFirmware(name: String, port: String, canReplace: Bool)  // someone's own: never offered as an update
+  case customFirmware(name: String, port: String, canReplace: Bool, outdated: Bool)  // someone's own: never offered as an update
   case upToDate(String)
   case boardNewer(board: String, app: String)
   case update(from: String, to: String)
@@ -60,27 +61,27 @@ enum FirmwarePlan: Equatable {
   case writing(pct: Int, to: String)
   case restarting(to: String)
 
-  /// `silent`: how long the port has been open without the board saying what it runs.
-  static func make(status: DaemonStatus?, image: FirmwareImage?, silent: TimeInterval) -> FirmwarePlan {
+  static func make(status: DaemonStatus?, image: FirmwareImage?) -> FirmwarePlan {
     guard let image else { return .noImage }
     guard let status else { return .notConnected }
     guard let flash = status.flash else { return .daemonTooOld }
     if flash.state == "flashing" { return .writing(pct: flash.pct, to: flash.to ?? image.version) }
     if flash.state == "restarting" { return .restarting(to: flash.to ?? image.version) }
-    guard status.board.connected, let port = status.board.port else { return .notConnected }
-    guard let fw = status.board.fw else {
-      if silent < unknownAfter { return .identifying }
-      return flash.tool ? .unknownDevice(port: (port as NSString).lastPathComponent) : .noTool(to: image.version)
+    guard status.board.connected, let port = status.board.port, let fw = status.board.fw else {
+      if status.board.probing == true { return .identifying }
+      guard let silent = status.board.silent?.first else { return .notConnected }
+      return flash.tool ? .unknownDevice(port: silent) : .noTool(to: image.version)
     }
     if FirmwareVersion.isCustom(fw) {
-      return .customFirmware(name: fw, port: (port as NSString).lastPathComponent, canReplace: flash.tool)
+      // Firmware for another board would leave this one with a dark screen, even on the same chip.
+      let fits = image.board != nil && image.board == status.board.name
+      return .customFirmware(name: fw, port: (port as NSString).lastPathComponent, canReplace: flash.tool && fits,
+                             outdated: status.board.outdated == true)
     }
     if fw == image.version { return .upToDate(fw) }
     if FirmwareVersion.isNewer(fw, than: image.version) == true { return .boardNewer(board: fw, app: image.version) }
     return flash.tool ? .update(from: fw, to: image.version) : .noTool(to: image.version)
   }
-
-  static let unknownAfter: TimeInterval = 8
 
   /// Worth pointing out on the Setup tab.
   var wantsAttention: Bool {

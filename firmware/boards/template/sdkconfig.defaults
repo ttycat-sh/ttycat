@@ -1,3 +1,8 @@
 # Your board's chip, flash size and speed, from its maker's page.
 CONFIG_IDF_TARGET="esp32s3"
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# How it reaches the Mac. USB straight to the chip:
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+# Or through a USB-to-serial chip, such as a CH340, instead:
+# CONFIG_ESP_CONSOLE_UART_DEFAULT=y

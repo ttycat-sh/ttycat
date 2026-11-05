@@ -5,7 +5,8 @@ One folder per board. A board has to:
 - Provide the functions in `../main/board.h`: start up, show a 240x320 picture, read touch, and optionally chime.
 - Say which chip it is and how it's set up, in its `sdkconfig.defaults`.
 - List its files, and the parts of ESP-IDF they need, in its `CMakeLists.txt`.
-- Have a chip with native USB (ESP32-S3, C3, C5 or C6), for now.
+- Say how it reaches the Mac, in the same file: USB straight to the chip, or through a USB-to-serial chip.
+- Have the memory for the picture: 154 KB in one piece. The original ESP32 doesn't.
 
 Everything else, the screens, Bit and talking to the Mac, is shared, so a board gets those and their updates for free.
 

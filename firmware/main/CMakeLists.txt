@@ -1,7 +1,7 @@
 idf_component_register(
     SRCS "main.c" "gfx.c" "fonts.c" "ui.c" "link.c" "sound.c" "pet.c" "game.c" "keyboard.c"
     INCLUDE_DIRS "."
-    REQUIRES esp_driver_usb_serial_jtag esp_timer esp_hw_support json mbedtls nvs_flash)
+    REQUIRES esp_driver_usb_serial_jtag esp_driver_uart esp_timer esp_hw_support json mbedtls nvs_flash)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-format-truncation)
 
 # Who this build says it is: see FW_NAME in model.h. Editing any of these sources gives it a new name.
@@ -15,7 +15,7 @@ foreach(fw_source ${fw_sources})
 endforeach()
 string(SHA256 fw_build_id "${fw_hashes}")
 string(SUBSTRING "${fw_build_id}" 0 8 fw_build_id)
-set(fw_defines "FW_BUILD_ID=\"${fw_build_id}\"")
+set(fw_defines "FW_BUILD_ID=\"${fw_build_id}\"" "FW_BOARD=\"${BOARD}\"")
 if(FW_RELEASE)
   list(APPEND fw_defines FW_RELEASE)
 endif()

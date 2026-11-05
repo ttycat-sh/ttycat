@@ -7,6 +7,7 @@ Compiles the real firmware UI, runs it with sample agents and saves the exact fr
   preview.py out.png --scene asks --goto queue      a sample scene, on a named screen
   preview.py out.png --goto pet --tap 40,300 --wait 500
   preview.py out.png --goto pet --then one          a prompt arrives while you're looking at it
+  preview.py out.png --scene one --goto ask:a --no-approve    a build that isn't allowed to approve yet
   preview.py out.png --scale 1                      actual size (default 2x, for looking at)
 
 Scenes: quiet, busy, one, asks, lots (as many as the board can hold, all waiting).
@@ -44,24 +45,24 @@ SCENES = {
 Q = json.dumps
 
 
-def send(scene):
-    c = [f"m_reset({NOW}LL);"]
+def send(scene, no_approve):
+    c = [f"m_reset({NOW}LL);", f"m_no_approve({int(no_approve)});"]
     for x in SCENES[scene]:
         c.append("m_add(" + ",".join(Q(x[k]) for k in ("id", "agent", "name")) + ',"",' + ",".join(Q(x[k]) for k in ("project", "detail", "tool", "verb", "body"))
                  + ',"",' + Q(x["note"]) + "," + Q(x["rev"]) + f',0,0,{x["age"]},{x["state"]},{x["ask"]});')
     return c + ["m_pet(214,5,60,70,60,80,0,0,0,0,12,30,14,0,-1);", "send_model();"]
 
 
-def script(scene, goto, taps, then, wait):
-    c = ["void m_reset(long long);void m_add(const char*,const char*,const char*,const char*,const char*,const char*,const char*,const char*,const char*,const char*,const char*,const char*,int,int,int,int,int);"
+def script(scene, goto, taps, then, wait, no_approve):
+    c = ["void m_reset(long long);void m_no_approve(int);void m_add(const char*,const char*,const char*,const char*,const char*,const char*,const char*,const char*,const char*,const char*,const char*,const char*,int,int,int,int,int);"
          "void m_pet(int,int,int,int,int,int,int,int,int,int,int,int,int,int,int);void send_model(void);void run(int);void go_to(const char*);void touch(int,int);void lift(void);void snap(const char*);",
-         "void script(void){", *send(scene), "run(3000);"]
+         "void script(void){", *send(scene, no_approve), "run(3000);"]
     if goto:
         c += [f"go_to({Q(goto)});", "run(300);"]
     for x, y in taps:
         c += [f"touch({x},{y});", "run(100);", "lift();", "run(300);"]
     if then:
-        c += [*send(then), "run(1200);"]
+        c += [*send(then, no_approve), "run(1200);"]
     c += [f"run({wait});", 'snap("frame");', "}"]
     return "\n".join(c)
 
@@ -90,6 +91,7 @@ def main():
     ap.add_argument("--goto")
     ap.add_argument("--tap", action="append", default=[])
     ap.add_argument("--then", choices=SCENES, help="change to this scene after the taps, as if it had just happened")
+    ap.add_argument("--no-approve", action="store_true")
     ap.add_argument("--wait", type=int, default=100)
     ap.add_argument("--scale", type=int, default=2)
     a = ap.parse_args()
@@ -97,7 +99,7 @@ def main():
     sources = [str(f) for f in sorted(FW.glob("*.c")) if f.name not in REPLACED]
     with tempfile.TemporaryDirectory() as d:
         d = Path(d)
-        (d / "script.c").write_text(script(a.scene, a.goto, taps, a.then, a.wait))
+        (d / "script.c").write_text(script(a.scene, a.goto, taps, a.then, a.wait, a.no_approve))
         built = subprocess.run(["cc", "-O1", "-w", "-I", str(HERE / "stubs"), "-I", str(FW), *sources, str(HERE / "harness.c"), str(d / "script.c"), "-o", str(d / "fw")],
                                capture_output=True, text=True)
         if built.returncode:

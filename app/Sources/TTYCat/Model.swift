@@ -43,7 +43,7 @@ final class TTYCatModel: ObservableObject {
   @Published var firmwarePlan = FirmwarePlan.notConnected
 
   let supervisor = Supervisor()
-  private var silentSince: Date?    // the port's been open, and the board hasn't said what it runs
+  private var boardAsksSeen: Int?
   private var lastFlashState: String?
   private var seenNeeds: Set<String>?
   private var seenPetEv: Int?
@@ -68,7 +68,7 @@ final class TTYCatModel: ObservableObject {
   var needs: Int { rows.filter(\.needsYou).count }
   var boardConnected: Bool { status?.board.connected == true }
   /// The board is optional. Someone without one shouldn't be told it's missing.
-  var boardMatters: Bool { boardEverSeen || boardConnected }
+  var boardMatters: Bool { boardEverSeen || boardConnected || status?.board.silent?.isEmpty == false }
   var asks: [AgentRow] { rows.filter { $0.s == "blocked" } }
   var selectedRow: AgentRow? { rows.first { $0.id == selected } }
 
@@ -452,13 +452,8 @@ final class TTYCatModel: ObservableObject {
       boardEverSeen = true
       UserDefaults.standard.set(true, forKey: "boardEverSeen")
     }
-    if board?.connected == true && board?.fw == nil {
-      silentSince = silentSince ?? Date()
-    } else {
-      silentSince = nil
-    }
-    firmwarePlan = FirmwarePlan.make(
-      status: status, image: firmwareImage, silent: silentSince.map { Date().timeIntervalSince($0) } ?? 0)
+    firmwarePlan = FirmwarePlan.make(status: status, image: firmwareImage)
+    noticeBoardAsking()
 
     // An update takes a while: you may have closed the panel by the time it ends.
     let state = status?.flash?.state
@@ -469,13 +464,31 @@ final class TTYCatModel: ObservableObject {
     if state != nil { lastFlashState = state }
   }
 
-  /// `unknown`: you've agreed to overwrite a device that hasn't said what it is.
-  func updateFirmware(unknown: Bool = false) {
+  /// A board that can't approve yet was tapped: the prompt comes up here, where it can be answered.
+  /// Said once, for that tap. Setup never nags about it: nothing should push anyone towards approving.
+  private func noticeBoardAsking() {
+    guard let board = status?.board else { return }
+    let asks = board.asks ?? 0
+    defer { boardAsksSeen = asks }
+    guard let seen = boardAsksSeen, asks > seen else { return }
+    page = .agents
+    if let row = rows.first(where: { $0.id == board.asked && $0.s == "blocked" }) {
+      pinnedAsk = row.rev
+      select(row)
+    }
+    Alerts.openPanel()
+    show("\(board.fw ?? "It") can't approve yet. Setup > Firmware can change that.")
+  }
+
+  /// `unknown`: you've agreed to overwrite a device that hasn't said what it is. `port`: which one.
+  func updateFirmware(unknown: Bool = false, port: String? = nil) {
     guard !flashBusy, let folder = FirmwareImage.folder else { return }
     flashStarting = true
     DispatchQueue.global(qos: .userInitiated).async {
       // The image's hashes are checked first; that's quick.
-      let data = Ctl.request(["t": "flash", "dir": folder, "unknown": unknown], timeout: 8)
+      var request: [String: Any] = ["t": "flash", "dir": folder, "unknown": unknown]
+      if let port { request["port"] = port }
+      let data = Ctl.request(request, timeout: 8)
       let reply = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
       let ok = reply?["ok"] as? Bool ?? false
       let message = reply?["msg"] as? String

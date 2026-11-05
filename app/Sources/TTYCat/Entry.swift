@@ -167,14 +167,15 @@ enum Preview {
     if scene == "pet-hello" { model.petEvent = PetEvent(kind: .welcome, at: Date()) }
     if scene == "pet-hunt" { model.hunt = HuntGame(previewAt: 9000, over: false, best: 14) }
     if scene == "pet-score" { model.hunt = HuntGame(previewAt: 21500, over: true, best: 2) }
-    let connected = !["unplugged", "fw-write", "welcome", "noboard"].contains(scene)
+    let connected = !["unplugged", "fw-write", "welcome", "noboard", "fw-unknown"].contains(scene)
     let flashState = ["fw-write": "flashing", "fw-back": "restarting", "fw-fail": "failed"][scene] ?? "idle"
     model.status = scene == "stopped" ? nil : DaemonStatus(
       pid: 4242, s: rows, pet: pet,
       board: BoardInfo(
         connected: connected, port: connected ? "/dev/cu.usbmodem1101" : nil,
-        fw: !connected || scene == "fw-unknown" || scene == "fw-back" ? nil : scene.hasPrefix("fw-custom") ? "my-lamp-1.0" : "0.6.1",
-        approves: scene == "fw-custom-on"),
+        fw: !connected || scene == "fw-back" ? nil : scene.hasPrefix("fw-custom") ? "my-lamp-1.0" : "0.6.1",
+        approves: scene == "fw-custom-on", outdated: scene == "fw-custom-old",
+        silent: scene == "fw-unknown" ? ["/dev/cu.usbmodem1101"] : []),
       machines: [MachineInfo(host: "studio", up: true, answers: true)],
       flash: FlashInfo(
         state: flashState, pct: 62, msg: scene == "fw-fail" ? "Couldn't reach the board. Hold BOOT while you plug it in, then try again." : "",
@@ -186,7 +187,7 @@ enum Preview {
       model.firmwareImage = FirmwareImage(version: "0.6.1")
     }
     model.firmwarePlan = FirmwarePlan.make(
-      status: model.status, image: model.firmwareImage, silent: scene == "fw-unknown" ? 60 : 0)
+      status: model.status, image: model.firmwareImage)
     if scene.hasPrefix("setup") { model.page = .setup }
     model.pinAsk()
     if scene == "stopped" { model.problem = "daemon stopped: ModuleNotFoundError" }

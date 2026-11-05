@@ -76,6 +76,7 @@ typedef enum {
   A_CARD,
   A_NEXT,
   A_ALLOW,
+  A_ASK_MAC,
   A_DENY,
   A_OPTION,
   A_CHOICE_NEXT,
@@ -904,15 +905,20 @@ static void draw_ask(const session_t *s) {
     ask_clipped = code_body(s, 14, 112, 212, 100, CODE, GREEN, sh);
     bool busy = answering;
     button(6, 226, 111, 64, TILE, &c_line, I_CROSS, 3, busy ? FAINT : ORANGE, 10, &sk11, busy ? FAINT : WHITE, "Deny", 2);
-    button(123, 226, 111, 64, busy ? CARD : ORANGE, NULL, I_CHECK, 3, busy ? FAINT : BLACK, 10, &sk11, busy ? FAINT : BLACK,
-           busy ? "Sending" : "Allow", busy ? 0 : 2);
+    if (model.no_approve) {  // Deny still works here. To say yes, it has to be on the Mac
+      button(123, 226, 111, 64, TILE, &c_line, NULL, 0, 0, 0, &sk11, busy ? FAINT : WHITE, "On Mac", 2);
+    } else {
+      button(123, 226, 111, 64, busy ? CARD : ORANGE, NULL, I_CHECK, 3, busy ? FAINT : BLACK, 10, &sk11, busy ? FAINT : BLACK,
+             busy ? "Sending" : "Allow", busy ? 0 : 2);
+    }
     if (!busy) {
       hit(6, 226, 111, 64, A_DENY, 0);
-      hit(123, 226, 111, 64, A_ALLOW, 0);
+      hit(123, 226, 111, 64, model.no_approve ? A_ASK_MAC : A_ALLOW, 0);
     }
     gfx_center(&vt16, 0, SCR_W, 298, ask_clipped ? ORANGE : FAINT,
                s->file[0] ? "swipe up for full diff"
-                          : ask_clipped ? "swipe up for all of it" : "also waiting in the terminal", 0);
+                          : ask_clipped ? "swipe up for all of it"
+                          : model.no_approve ? "approve this one on your Mac" : "also waiting in the terminal", 0);
   } else {
     ask_clipped = code_body(s, 14, 112, 212, 62, CODE, sh ? GREEN : MUTED, sh);
     gfx_dashed(14, 182, 212, 2, SPENT);
@@ -1208,6 +1214,13 @@ static void do_action(const hit_t *h) {
     case A_NEXT: open_next_need(); break;
     case A_ALLOW:
       if (now - ask_armed_at >= ARM_DELAY_MS) answer("allow");
+      break;
+    case A_ASK_MAC:
+      if (now - ask_armed_at >= ARM_DELAY_MS && (s = find_session(cur_id))) {
+        link_act("ask-mac", s->id, s->rev);
+        strlcpy(toast, "Look on your Mac", sizeof(toast));
+        toast_until = now + TOAST_MS;
+      }
       break;
     case A_DENY:
       if (now - ask_armed_at >= ARM_DELAY_MS) answer("deny");
@@ -1636,6 +1649,6 @@ void ui_tick(void) {
   int64_t now = now_ms();
   if (now - last_rx_ms > 2000 && now - last_hello > 1000) {
     last_hello = now;
-    link_send_line("{\"t\":\"hello\",\"fw\":\"" FW_NAME "\"}");
+    link_send_line("{\"t\":\"hello\",\"fw\":\"" FW_NAME "\",\"b\":\"" FW_BOARD "\",\"p\":" FW_PROTOCOL "}");
   }
 }

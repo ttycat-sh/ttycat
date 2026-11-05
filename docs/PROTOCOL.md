@@ -2,12 +2,14 @@
 
 One JSON object per line, both ways, over USB serial. Lines that aren't JSON are ignored, so boot messages are harmless.
 
-The daemon uses the first `/dev/cu.usbmodem*` it finds, or `--port PATH` when run by hand. The app has no way to pass a port, so a device has to show up as `usbmodem`, and another device that sorts first would be picked instead. A board with a USB-to-serial chip shows up as `usbserial` or `wchusbserial`, and only works with `--port`. Some boards have two USB ports: use the one wired to the chip itself, often marked USB rather than UART.
+The daemon looks at `/dev/cu.usbmodem*`, then `usbserial*`, `wchusbserial*` and `SLAB_USBtoUART*`, and stays with the first that says hello. Each port gets one try of 6 seconds, because opening a port can restart what's on it. One that says nothing is left alone until it's unplugged, and it's sent nothing at all. When run by hand, `--port PATH` picks one.
+
+A USB-to-serial chip runs at 230400 baud. Over USB straight to the chip, the speed doesn't matter. Some boards have two USB ports, and either can work, as long as the firmware is set up for the one you use.
 
 ## Device to Mac
 | Message | Means |
 |---|---|
-| `{"t":"hello","fw":"my-lamp-1.0"}` | Who it is. Send it at the start, and again whenever you've heard nothing for 2 seconds, because a restarted daemon has forgotten you. The daemon stays quiet for 5 seconds after connecting so it can hear this, then answers `{"t":"hello"}` |
+| `{"t":"hello","fw":"my-lamp-1.0","b":"my-board","p":1}` | Who it is. `fw` is its name, `b` the board, if it has a folder in `firmware/boards`, and `p` the protocol version it speaks. Send it at the start, and again whenever you've heard nothing for 2 seconds, because a restarted daemon has forgotten you. The daemon answers `{"t":"hello","p":1}`, and sends nothing else until it's heard one |
 | `{"t":"act","a":ACTION,"id":ID,"rev":REV}` | Do something: see below |
 | `{"t":"watch","id":ID}` | Put this session's recent history in `state` |
 | `{"t":"dim","on":true}` | Its screen has gone dim, and Bit dozes on the Mac too |
@@ -18,11 +20,15 @@ The Mac answers each `act` with `{"t":"ack","ok":true,"msg":""}`. An `ack` doesn
 
 | `a` | Means | Who can |
 |---|---|---|
-| `open` | Brings that session up on the Mac. It answers nothing. It can hold the daemon up for several seconds, so expect a gap in `state` | Any device |
+| `ask-mac` | Brings that prompt up in the Mac's panel, to be answered there. It's what a board shows instead of Allow when `na` is set | Any device |
+| `open` | Brings that session up in its terminal on the Mac. It answers nothing. It can hold the daemon up for several seconds, so expect a gap in `state` | Any device |
 | `deny` | Says no to the prompt with this `rev`. Only when `ask` is `approve`, and only with the hook on (Setup > Answer prompts). Otherwise it's refused and the prompt stays in the terminal | Any device |
 | `seen`, `pet-*` | Marks a finished session as seen, and cares for Bit | Any device |
-| `allow` | Says yes. Rule 2 in `AGENTS.md` applies | Release builds, or a build the person has allowed in Setup |
+| `allow` | Says yes. Rule 2 in `AGENTS.md` applies | Release builds, or a build the person has allowed in Setup. Otherwise `state` has `na` |
 | `answer` | Answers a question, with `"ans":[{"o":[0],"t":"typed"}]`, one entry for each question | The same |
+
+## The protocol version
+`p` goes up only when a change would break a device that's already built. A new field doesn't count, so ignore fields you don't know. If `p` doesn't match, the daemon answers `hello` and sends nothing else, and Setup says the firmware needs rebuilding.
 
 ## Your device's name
 `fw` decides what it can do. Only a plain version number, like `0.9.1`, counts as ttycat's own, and only release builds say that. Any other name is someone's own device: it can do everything above except approve, the app never offers to update it, and Setup can let that exact name approve if the person confirms.
@@ -41,6 +47,7 @@ A line can be up to 24 KB. Read it into a big enough buffer. If a line is too lo
 | `pet` | Bit: `total today grown food fun energy poops need asleep birthday snacks age best ev evk name` |
 | `hist` | `{"id":ID,"items":[{"age":"2m","text":"...","tone":0}]}` for the watched session |
 | `look` | `[skin, accent]`, left out when both are default |
+| `na` | True if this device can't approve yet. Offer `ask-mac` instead of Allow |
 
 Each session in `s`:
 | Field | Means |
@@ -59,7 +66,7 @@ Each session in `s`:
 `error` can also mean a machine it can't reach (`p` is "not reachable"), so its agents could be waiting on you. Don't treat `error` as nothing going on.
 
 ## Testing with no device and no real agents
-`demo` shows sample agents and answers nothing real. Give it a fresh `HOME` so it can't meet a running ttycat, and a pseudo-terminal as the port. Set the pseudo-terminal to raw mode, or what you write comes straight back:
+`demo` shows sample agents and answers nothing real, and it needs a hello with the right `p` like anything else. Give it a fresh `HOME` so it can't meet a running ttycat, and a pseudo-terminal as the port. Set the pseudo-terminal to raw mode, or what you write comes straight back:
 
     HOME=$(mktemp -d) python3 daemon/ttycatd.py --port /dev/ttysNNN demo
 

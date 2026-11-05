@@ -6,7 +6,12 @@
 
 #include "board.h"
 #include "cJSON.h"
+#include "sdkconfig.h"
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
 #include "driver/usb_serial_jtag.h"
+#else
+#include "driver/uart.h"
+#endif
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -18,13 +23,44 @@
 
 #define RX_LINE_MAX 24576
 
+// The chip's own USB port, or a USB-to-serial chip on its first UART: a board's sdkconfig.defaults says which.
+#if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
+static void port_begin(void) {
+  usb_serial_jtag_driver_config_t cfg = {.tx_buffer_size = 4096, .rx_buffer_size = 4096};
+  ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&cfg));
+}
+static int port_read(void *buf, size_t n, TickType_t wait) { return usb_serial_jtag_read_bytes(buf, n, wait); }
+static int port_write(const char *s, size_t n, TickType_t wait) { return usb_serial_jtag_write_bytes(s, n, wait); }
+bool link_usb_connected(void) { return usb_serial_jtag_is_connected(); }
+#else
+enum { LINK_UART = UART_NUM_0, LINK_BAUD = 230400 };  // the daemon's speed: Board.open in ttycatd.py
+static void port_begin(void) {
+  uart_config_t cfg = {
+      .baud_rate = LINK_BAUD,
+      .data_bits = UART_DATA_8_BITS,
+      .parity = UART_PARITY_DISABLE,
+      .stop_bits = UART_STOP_BITS_1,
+      .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+      .source_clk = UART_SCLK_DEFAULT,
+  };
+  ESP_ERROR_CHECK(uart_driver_install(LINK_UART, 4096, 4096, 0, NULL, 0));
+  ESP_ERROR_CHECK(uart_param_config(LINK_UART, &cfg));
+}
+static int port_read(void *buf, size_t n, TickType_t wait) { return uart_read_bytes(LINK_UART, buf, n, wait); }
+static int port_write(const char *s, size_t n, TickType_t wait) {
+  (void)wait;
+  return uart_write_bytes(LINK_UART, s, n);
+}
+bool link_usb_connected(void) { return true; }  // a UART can't tell
+#endif
+
 static SemaphoreHandle_t tx_lock;
 static char line[RX_LINE_MAX];
 static model_t next;
 
 static void write_all(const char *s, size_t n) {
   while (n) {
-    int w = usb_serial_jtag_write_bytes(s, n, pdMS_TO_TICKS(200));
+    int w = port_write(s, n, pdMS_TO_TICKS(200));
     if (w <= 0) return;  // nobody is reading: drop it
     s += w;
     n -= (size_t)w;
@@ -103,6 +139,7 @@ static void parse_state_msg(const cJSON *j) {
   memset(&next, 0, sizeof(next));
   const cJSON *now = cJSON_GetObjectItemCaseSensitive(j, "now");
   next.now = cJSON_IsNumber(now) ? (int64_t)now->valuedouble : 0;
+  next.no_approve = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(j, "na"));
   const cJSON *list = cJSON_GetObjectItemCaseSensitive(j, "s"), *o;
   cJSON_ArrayForEach(o, list) {
     if (next.n >= MAX_SESSIONS) break;
@@ -128,6 +165,10 @@ static void parse_state_msg(const cJSON *j) {
     copy_str(ask, sizeof(ask), o, "ask");
     s->ask = !strcmp(ask, "approve") ? ASK_APPROVE : !strcmp(ask, "choice") ? ASK_CHOICE
            : !strcmp(ask, "terminal") ? ASK_TERMINAL : ASK_NONE;
+    if (next.no_approve && s->ask == ASK_CHOICE) {  // an answer can be permission too
+      s->ask = ASK_TERMINAL;
+      strlcpy(s->note, "Answer it on the Mac, or allow this board in Setup", sizeof(s->note));
+    }
     int body = pool_add(o, "body");
     bool fits = body >= 0;
     s->body = fits ? (uint16_t)body : 0;
@@ -225,7 +266,7 @@ static void rx_task(void *arg) {
   bool overflow = false;
   static uint8_t buf[512];
   for (;;) {
-    int n = usb_serial_jtag_read_bytes(buf, sizeof(buf), pdMS_TO_TICKS(100));
+    int n = port_read(buf, sizeof(buf), pdMS_TO_TICKS(100));
     for (int i = 0; i < n; i++) {
       if (buf[i] == '\n') {
         if (!overflow) {
@@ -245,12 +286,9 @@ static void rx_task(void *arg) {
 
 void link_begin(void) {
   tx_lock = xSemaphoreCreateMutex();
-  usb_serial_jtag_driver_config_t cfg = {.tx_buffer_size = 4096, .rx_buffer_size = 4096};
-  ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&cfg));
+  port_begin();
   xTaskCreate(rx_task, "link", 8192, NULL, 5, NULL);
 }
-
-bool link_usb_connected(void) { return usb_serial_jtag_is_connected(); }
 
 void link_act(const char *act, const char *id, const char *rev) {
   char buf[128];

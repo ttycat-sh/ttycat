@@ -82,6 +82,8 @@ void m_reset(int64_t now) {
   strlcpy(m.pet_name, "Bit", sizeof(m.pet_name));
 }
 
+void m_no_approve(int on) { m.no_approve = on; }
+
 void m_add(const char *id, const char *agent, const char *name, const char *host, const char *project, const char *detail, const char *tool,
            const char *verb, const char *body, const char *file, const char *note, const char *rev, int add, int del, int age, int state, int ask) {
   session_t *s = &m.s[m.n++];

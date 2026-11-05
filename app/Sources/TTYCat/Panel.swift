@@ -588,22 +588,26 @@ private struct FirmwareSection: View {
         Fact(name: "Board", value: "connecting", good: false)
       case .unknownDevice(let port):
         Fact(name: "Board", value: "not answering", good: false)
-        note("\(port) isn't answering. If that's the board, reinstalling fixes it. If it's another device, this would overwrite it.", warn: true)
+        note("\((port as NSString).lastPathComponent) isn't answering. If that's the board, reinstalling fixes it. If it's another device, this would overwrite it.", warn: true)
         if confirming.value {
           HStack(spacing: 6) {
             PixelButton(title: "Cancel") { confirming.value = false }
             PixelButton(title: "Overwrite it", loud: true) {
               confirming.value = false
-              m.updateFirmware(unknown: true)
+              m.updateFirmware(unknown: true, port: port)
             }
           }
         } else {
           PixelButton(title: "Reinstall firmware") { confirming.value = true }
         }
-      case .customFirmware(let name, let port, let canReplace):
-        Fact(name: "Board", value: "\(name), custom firmware", good: true)
-        note("This isn't ttycat's firmware, so it won't be updated from here.")
-        approveChoice(name)
+      case .customFirmware(let name, let port, let canReplace, let outdated):
+        Fact(name: "Board", value: "\(name), custom firmware", good: !outdated)
+        if outdated {
+          note("This firmware doesn't match this version of ttycat, so nothing is being sent to it. Rebuild it from the latest source.", warn: true)
+        } else {
+          note("This isn't ttycat's firmware, so it won't be updated from here.")
+          approveChoice(name)
+        }
         if canReplace {
           if confirming.value {
             note("This erases \(name) from \(port).", warn: true)
