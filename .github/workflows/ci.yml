@@ -13,6 +13,8 @@ jobs:
       - name: App
         working-directory: app
         run: swift test
+      - name: Screens can be previewed with no board
+        run: python3 tools/preview/preview.py preview.png --scene asks --goto queue && test -s preview.png
       - name: It stands on its own
         run: |
           test ! -e app/Sources/TTYCat/_extra

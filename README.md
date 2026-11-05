@@ -105,6 +105,16 @@ idf.py -p /dev/cu.usbmodem1101 flash
 
 Stop the daemon first: it holds the serial port.
 
+## Building on it
+
+The firmware's open, and you don't have to write the code yourself. Open this repo with a coding agent and say what you'd like: `AGENTS.md` and the skills in `.claude/skills` tell it how, along with the rules that keep your agents answerable to you.
+
+- **A new screen:** `tools/preview/preview.py` shows the real screens as images, with no board and no ESP-IDF, so you can see it before you own one.
+- **Another board:** `board.c` is the only part tied to this one, as long as the screen is 240x320.
+- **A different device:** anything that speaks `docs/PROTOCOL.md` over USB works, such as a lamp.
+
+These have been tried without hardware, and not yet on a real board.
+
 ## Using it
 
 | Where | What |
@@ -233,6 +243,8 @@ One JSON object per line, on the board's USB port. Other lines, such as boot and
 **Only ttycat's own firmware can approve without being asked about.** A device that gives any other name in `hello`, or none, can see everything, open a session and Deny, but its `allow` and `answer` are refused. That's because it may have no way to show the whole prompt. For one that does, Setup > Firmware has **It can approve prompts**, off until you confirm, for that name only (`~/.ttycat/devices.json`). This guards against accidents. Each new build of your own asks again. It can't stop a device built to lie about its name.
 
 `tap` goes through the same code as a finger, so anything on this Mac running as you can answer prompts the board is showing. The same is true of anything that can type into your terminal. The hook socket, `~/.ttycat/hook.sock`, is only readable by you.
+
+The full protocol is in `docs/PROTOCOL.md`.
 
 ## Tests
 
