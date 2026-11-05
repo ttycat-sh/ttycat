@@ -1,17 +1,10 @@
-CONFIG_IDF_TARGET="esp32c5"
-CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
-CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y
+# For every board. A board's own settings, such as its chip, are in its folder.
 CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
-CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 CONFIG_FREERTOS_HZ=1000
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
 
-# The board has no USB-UART chip. The daemon's protocol shares this port with
-# panic output; the daemon ignores any line that isn't JSON.
+# The protocol shares the USB port with panic output; the daemon ignores any line that isn't JSON.
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 CONFIG_LOG_DEFAULT_LEVEL_WARN=y
 CONFIG_BOOTLOADER_LOG_LEVEL_WARN=y
-
-# esp_codec_dev on the new I2C master driver.
-CONFIG_CODEC_I2C_BACKWARD_COMPATIBLE=n

@@ -1,18 +1,16 @@
-// The Waveshare ESP32-C5-Touch-LCD-2.8: ST7789 panel, CST3530 touch, and the
-// CH32V003 expander that owns both resets, the backlight and the speaker's amp.
+// All the firmware needs from a board. Each board implements this in its own folder under boards/,
+// and nothing outside that folder knows which board it's running on. See boards/README.md.
 #pragma once
 #include <stdbool.h>
-#include <stdint.h>
 
-#include "driver/i2c_master.h"
-
+// Powers everything up, starts the screen and touch, and allocates gfx_fb. Called once, first.
 void board_begin(void);
-i2c_master_bus_handle_t board_i2c(void);
-bool board_exio_set(int line, bool high);
 void board_backlight(int percent);
-// Sends only the rows that changed since the last flush.
+// Puts gfx_fb on the screen, as cheaply as it can: this runs about 60 times a second.
 void board_flush(void);
-// True while a finger is down, with its position.
+// True while a finger is down, with its position in the 240x320 picture.
 bool board_touch(int *x, int *y);
 
-enum { EXIO_TOUCH_RST = 0, EXIO_LCD_RST = 1, EXIO_AMP = 3 };
+// The chime when an agent needs you. A board with no speaker leaves both of these empty.
+void board_sound_begin(void);
+void board_chime(void);  // returns at once, without waiting for the sound to finish

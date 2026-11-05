@@ -1,4 +1,4 @@
-// The attention chime on the board's speaker (ES8311, NS4150B amp on EXIO3).
+// Whether the chime plays. What makes the sound is the board's: board_chime.
 #pragma once
 #include <stdbool.h>
 

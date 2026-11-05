@@ -48,8 +48,6 @@ int xQueueReceive(QueueHandle_t q, void *item, int wait) {
 }
 
 void board_begin(void) {}
-i2c_master_bus_handle_t board_i2c(void) { return NULL; }
-bool board_exio_set(int line, bool high) { (void)line; (void)high; return true; }
 void board_backlight(int percent) { (void)percent; }
 void board_flush(void) {}
 bool board_touch(int *x, int *y) { *x = finger_x; *y = finger_y; return finger; }

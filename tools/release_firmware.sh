@@ -4,4 +4,4 @@
 set -eu
 cd "$(dirname "$0")/../firmware"
 rm -rf build-release
-idf.py -B build-release -D FW_RELEASE=1 -D SDKCONFIG=build-release/sdkconfig build
+idf.py -B build-release -D FW_RELEASE=1 build

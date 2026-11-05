@@ -21,7 +21,8 @@ These protect the person from their own agents, including you. Keep them even if
 8. **Their own name on their own device.** The licence doesn't cover the name "ttycat" or the logo. A fork can say "works with ttycat".
 
 ## Where things are
-- `firmware/main/ui.c`: every screen. `board.c`: this board's hardware. `gfx.h`: drawing. `link.c`: talking to the Mac. `model.h`: what the Mac sends.
+- `firmware/main`: what every board shares. `ui.c`: every screen. `gfx.h`: drawing. `link.c`: talking to the Mac. `model.h`: what the Mac sends. `board.h`: all it needs from a board.
+- `firmware/boards`: one folder per board. Nothing about particular hardware belongs anywhere else.
 - `docs/PROTOCOL.md`: the messages between the Mac and a device.
 - `tools/preview/preview.py`: see a screen as a PNG, with no board and no ESP-IDF.
 

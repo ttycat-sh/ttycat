@@ -15,6 +15,8 @@ jobs:
         run: swift test
       - name: Screens can be previewed with no board
         run: python3 tools/preview/preview.py preview.png --scene asks --goto queue && test -s preview.png
+      - name: The shared firmware knows no particular board
+        run: "! grep -rniE 'waveshare|esp_lcd|esp32c5|driver/i2c|driver/spi|EXIO_' firmware/main --include='*.c' --include='*.h' --include='CMakeLists.txt' --exclude=fonts.c"
       - name: It stands on its own
         run: |
           test ! -e app/Sources/TTYCat/_extra

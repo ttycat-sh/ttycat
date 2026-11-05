@@ -1,12 +1,12 @@
 idf_component_register(
-    SRCS "main.c" "board.c" "gfx.c" "fonts.c" "ui.c" "link.c" "sound.c" "pet.c" "game.c" "keyboard.c"
+    SRCS "main.c" "gfx.c" "fonts.c" "ui.c" "link.c" "sound.c" "pet.c" "game.c" "keyboard.c"
     INCLUDE_DIRS "."
-    REQUIRES esp_lcd esp_driver_gpio esp_driver_i2c esp_driver_i2s esp_driver_spi
-             esp_driver_usb_serial_jtag esp_timer esp_hw_support json mbedtls nvs_flash)
+    REQUIRES esp_driver_usb_serial_jtag esp_timer esp_hw_support json mbedtls nvs_flash)
 target_compile_options(${COMPONENT_LIB} PRIVATE -Wno-format-truncation)
 
 # Who this build says it is: see FW_NAME in model.h. Editing any of these sources gives it a new name.
-file(GLOB fw_sources "${CMAKE_CURRENT_LIST_DIR}/*.c" "${CMAKE_CURRENT_LIST_DIR}/*.h")
+file(GLOB fw_sources "${CMAKE_CURRENT_LIST_DIR}/*.c" "${CMAKE_CURRENT_LIST_DIR}/*.h"
+                     "${BOARD_DIR}/*.c" "${BOARD_DIR}/*.h" "${BOARD_DIR}/sdkconfig.defaults")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${fw_sources})
 set(fw_hashes "")
 foreach(fw_source ${fw_sources})

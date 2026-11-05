@@ -13,7 +13,7 @@ Ask first. Say what you're about to do, and what will change:
 Then:
 1. Find the port: `ls /dev/cu.usbmodem*`. If there's more than one, ask which. Never guess: flashing the wrong port erases another device.
 2. Have them quit ttycat from its menu.
-3. `. ~/esp/esp-idf-v5.5.6/export.sh && cd firmware && idf.py -p PORT flash`, adjusting the path to where ESP-IDF is.
+3. `. ~/esp/esp-idf-v5.5.6/export.sh && cd firmware && idf.py -p PORT flash`, adjusting the path to where ESP-IDF is. For a board other than the Waveshare: `idf.py -B build-NAME -D BOARD=NAME -p PORT flash`.
 4. If it can't connect: hold BOOT on the board while plugging it in, and try again.
 5. Have them open ttycat again. Setup > Firmware should show the build's name as custom firmware.
 6. Check the real screen: `python3 daemon/ttycatd.py shot out.png`, then look at it. `ttycatd.py goto pet` and `tap X Y` drive it. `tap` works like a finger and can answer a real prompt, so only use it when nothing's waiting (rule 5).

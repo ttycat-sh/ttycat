@@ -24,8 +24,8 @@ cp "$ROOT"/tools/fonts/*.ttf "$ROOT"/tools/fonts/OFL-*.txt "$APP/Contents/Resour
 FIRMWARE=${TTYCAT_FIRMWARE_BUILD:-$ROOT/firmware/build}
 if [ -f "$FIRMWARE/flasher_args.json" ]; then
   python3 "$ROOT/tools/firmware_bundle.py" "$FIRMWARE" "$APP/Contents/Resources/firmware"
-  if [ -n "$(find "$ROOT/firmware/main" -newer "$FIRMWARE/ttycat.bin" -print -quit)" ]; then
-    echo "warning: firmware/main has changes that aren't built; the app carries the older build" >&2
+  if [ -n "$(find "$ROOT/firmware/main" "$ROOT/firmware/boards" -newer "$FIRMWARE/ttycat.bin" -print -quit)" ]; then
+    echo "warning: firmware has changes that aren't built; the app carries the older build" >&2
   fi
 else
   echo "warning: no firmware build found; this app can't update the board" >&2

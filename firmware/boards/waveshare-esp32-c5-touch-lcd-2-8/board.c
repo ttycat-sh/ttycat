@@ -14,6 +14,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "gfx.h"
+#include "waveshare.h"
 
 static const char *TAG = "board";
 

@@ -3,7 +3,7 @@
 A touch screen on the desk for your coding agents, with or without [herdr](https://herdr.dev): what every coding agent is doing, and Allow or Deny for the ones waiting on you. It runs on the Waveshare ESP32-C5-Touch-LCD-2.8 (240x320, capacitive touch) and implements the "ttycat UI" design.
 
 ```
-firmware/    ESP-IDF firmware: draws the screens, handles touch
+firmware/    ESP-IDF firmware: main/ draws the screens and talks to the Mac, boards/ has one folder per board
 daemon/      Mac daemon, Python standard library only: herdr and Claude Code <-> USB serial
 app/         menu bar app (Swift): runs the daemon and shows what it knows
 tools/       font generator and the design's fonts (OFL licensed)
@@ -99,7 +99,6 @@ herdr isn't required, on this Mac or on other machines. A session outside it jus
 ```sh
 . ~/esp/esp-idf-v5.5.6/export.sh
 cd firmware
-idf.py set-target esp32c5    # first time only
 idf.py -p /dev/cu.usbmodem1101 flash
 ```
 
@@ -110,7 +109,7 @@ Stop the daemon first: it holds the serial port.
 The firmware's open, and you don't have to write the code yourself. Open this repo with a coding agent and say what you'd like: `AGENTS.md` and the skills in `.claude/skills` tell it how, along with the rules that keep your agents answerable to you.
 
 - **A new screen:** `tools/preview/preview.py` shows the real screens as images, with no board and no ESP-IDF, so you can see it before you own one.
-- **Another board:** `board.c` is the only part tied to this one, as long as the screen is 240x320.
+- **Another board:** each board is a folder in `firmware/boards`, and everything else is shared. See `firmware/boards/README.md`.
 - **A different device:** anything that speaks `docs/PROTOCOL.md` over USB works, such as a lamp.
 
 These have been tried without hardware, and not yet on a real board.
@@ -224,6 +223,8 @@ The design's Idle board is now the pet's home screen, with a smaller clock to ma
 Added beyond the design: the swipe-up full view, row scrolling on the queue, machine names, the question screen and keyboard, the pet with its screens and game, the "All clear" tile on Overview, and "runs herdr focus" in place of "runs focusCommand".
 
 ## Board notes
+
+These are about the Waveshare board, in `firmware/boards/waveshare-esp32-c5-touch-lcd-2-8`.
 
 - **Screen:** the UI redraws into a 240x320 RGB565 framebuffer in internal RAM. Only rows that changed go to the ST7789, over SPI at 80 MHz.
 - **Reset and backlight:** both resets, the backlight and the speaker amp sit behind the CH32V003 at I2C 0x24. Waveshare's firmware on that chip stays as it is; flashing here only touches the ESP32-C5.
