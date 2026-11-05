@@ -47,7 +47,7 @@ private func plan(_ s: DaemonStatus?, image i: FirmwareImage? = image, silent: D
 
 @Test func onlyPlainVersionsAreOurs() {
   for ours in ["0.9.1", "1", "0.10.0"] { #expect(!FirmwareVersion.isCustom(ours)) }
-  for theirs in ["my-lamp-1.0", "dev", "0.9.1-mine", "1..2", "+1.2", ""] { #expect(FirmwareVersion.isCustom(theirs)) }
+  for theirs in ["custom-0.9.1-7e297979", "my-lamp-1.0", "dev", "0.9.1-mine", "1..2", "+1.2", ""] { #expect(FirmwareVersion.isCustom(theirs)) }
 }
 
 @Test func aSilentPortGetsTimeBeforeItCountsAsUnknown() {

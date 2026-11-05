@@ -20,9 +20,11 @@ cp "$BIN" "$APP/Contents/MacOS/ttycat"
 cp "$ROOT"/tools/fonts/*.ttf "$ROOT"/tools/fonts/OFL-*.txt "$APP/Contents/Resources/"
 
 # The firmware this app can put on the board. It's only ever the last build: firmware/ isn't built here.
-if [ -f "$ROOT/firmware/build/flasher_args.json" ]; then
-  python3 "$ROOT/tools/firmware_bundle.py" "$ROOT/firmware/build" "$APP/Contents/Resources/firmware"
-  if [ -n "$(find "$ROOT/firmware/main" -newer "$ROOT/firmware/build/ttycat.bin" -print -quit)" ]; then
+# app/release.sh points this at the release build.
+FIRMWARE=${TTYCAT_FIRMWARE_BUILD:-$ROOT/firmware/build}
+if [ -f "$FIRMWARE/flasher_args.json" ]; then
+  python3 "$ROOT/tools/firmware_bundle.py" "$FIRMWARE" "$APP/Contents/Resources/firmware"
+  if [ -n "$(find "$ROOT/firmware/main" -newer "$FIRMWARE/ttycat.bin" -print -quit)" ]; then
     echo "warning: firmware/main has changes that aren't built; the app carries the older build" >&2
   fi
 else

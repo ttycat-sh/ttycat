@@ -12,6 +12,19 @@
 #define OPTION_MAX 4       // in one question
 #define TYPED_MAX 200      // a typed answer
 #define FW_VERSION "0.9.1"
+#define FW_LABEL "custom"  // your own build's name, shown in the app's Setup
+
+// What this build tells the Mac it runs. A plain version is what makes it ttycat's own, and able to
+// approve prompts without being asked about, so only a release says that (tools/release_firmware.sh).
+// Anything else says what it is, down to its source (main/CMakeLists.txt), so each change asks again.
+#ifdef FW_RELEASE
+#define FW_NAME FW_VERSION
+#else
+#ifndef FW_BUILD_ID
+#define FW_BUILD_ID "unbuilt"
+#endif
+#define FW_NAME FW_LABEL "-" FW_VERSION "-" FW_BUILD_ID
+#endif
 
 // In the order the queue sorts them.
 typedef enum { ST_BLOCKED, ST_ERROR, ST_DONE, ST_WORKING, ST_IDLE } state_t;
