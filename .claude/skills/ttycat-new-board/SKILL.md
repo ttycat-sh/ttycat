@@ -5,7 +5,7 @@ description: Run the ttycat firmware on a different ESP32 board with a touch scr
 
 # Run it on another board
 
-Each board is a folder in `firmware/boards`. It provides the few functions in `firmware/main/board.h`, and gets every screen, Bit and the link to the Mac from the shared code, along with their updates. The person may not be a programmer: tell them what you're doing in plain words, and ask them only what you can't find out yourself.
+Each board is a folder. It provides the few functions in `firmware/main/board.h`, and gets every screen, Bit and the link to the Mac from the shared code. The folder is the person's own and lives outside this repo, in `~/ttycat-boards/NAME` unless they'd like it elsewhere. It never comes into this repo, not even as a pull request. Once it's flashed through the daemon, the board is registered, and the Mac app builds each new ttycat release for it with that folder, from Setup. The person may not be a programmer: tell them what you're doing in plain words, and ask them only what you can't find out yourself.
 
 **Change nothing outside the board's folder.** If it seems you have to, because the shared screens don't handle something about this board, stop and ask. Say what and where. A fix there has to be general: it works for any board with the same trait, nothing in the shared code checks which board it is, and every other board stays exactly the same. Prove that with `npm run verify-board` in the website repo (`TTYCAT_CORE=path/to/ttycat` if it's elsewhere): every frame must match.
 
@@ -46,7 +46,7 @@ Then show them every screen as their glass will show it, before anything's built
 
     python3 tools/preview/gallery.py out.png --size 240x240 --corner 48 --cut
 
-Also tell them: the app won't update this board, because the firmware it carries is for the official board. They'll get updates by rebuilding from the latest source here. If the app ever says the firmware doesn't match, rebuilding fixes it.
+Also tell them how updates will reach it: once it works and is registered, Setup offers each new ttycat release for this board, builds it on their Mac with their folder, and puts the old build back if the new one doesn't start.
 
 ## 3. Save what's on the board
 
@@ -61,7 +61,7 @@ Before the first flash, save the board's own firmware. Nothing else can put it b
 
 ESP-IDF has to be in the shell for `idf.py` and `esptool.py`. Look for it with `ls ~/esp/*/export.sh`, then run `. ~/esp/esp-idf-vX/export.sh` in the same command as whatever needs it. If it isn't installed, say so: it's Espressif's free toolkit, and the install takes a while.
 
-1. Copy `firmware/boards/template` to a folder named after the board, in letters, numbers and dashes. The boards `README` is in `firmware/boards`. The two Waveshare folders are complete examples: an LCD with square corners, and an AMOLED with rounded corners and zoom.
+1. Copy `firmware/boards/template` to `~/ttycat-boards/NAME`, named after the board in lowercase letters, numbers and dashes. Keep its first line, `set(BOARD_API ...)`: it says which version of `board.h` the folder was made for. The boards `README` is in `firmware/boards`. The two Waveshare folders there are complete examples: an LCD with square corners, and an AMOLED with rounded corners and zoom.
 2. Set the chip, flash size, PSRAM mode and speed in the folder's `sdkconfig.defaults`. List its files and the parts of ESP-IDF they need in its `CMakeLists.txt`. If it needs drivers from the component registry, list them in an `idf_component.yml` in the folder.
 3. Fill in `board.c`:
    - **Size and shape.** Set `PANEL_W`, `PANEL_H`, `ZOOM`, `CORNER_RADIUS` and `EDGE_INSET` to what the check said, with a comment saying where the radius came from. The template sets the picture's size from them, allocates it, and tells every screen to keep clear of the corners.
@@ -71,9 +71,9 @@ ESP-IDF has to be in the shell for `idf.py` and `esptool.py`. Look for it with `
    - **Brightness.** `board_backlight` gets 0 to 100. An AMOLED has no backlight: set the panel's own brightness command instead, and keep the screen dark until the first picture is on it.
    - **Sound.** With no speaker, leave `board_sound_begin` and `board_chime` empty.
 
-   Then `python3 tools/preview/gallery.py out.png --board NAME --cut` shows every screen with the folder's own size and corners. If something is still cut off, that's for the shared screens, not something to move for one board: see the top.
+   Then `python3 tools/preview/gallery.py out.png --board ~/ttycat-boards/NAME --cut` shows every screen with the folder's own size and corners. If something is still cut off, that's for the shared screens, not something to move for one board: see the top.
 4. Leave a `README.md` in the folder: the board's name and maker, where each detail came from, and what's been checked on the real board. The next person with this board starts there.
-5. Build: `idf.py -B build-NAME -D BOARD=NAME build`.
+5. Build, from `firmware`: `idf.py -B ~/ttycat-boards/build-NAME -D BOARD_DIR=$HOME/ttycat-boards/NAME build`.
 
 ## 5. Put it on the board
 
@@ -98,6 +98,14 @@ A build only proves that it compiles. Don't say it works until they've seen it.
 
 On an AMOLED, tell them a picture that stays put for months can burn in, and Bit's home screen is mostly still.
 
-## 7. Share it
+## 7. Updates from here on
 
-Once it works, offer to save it as a pull request, so others with that board can use it. Only the board's folder should be in it, unless a shared fix was agreed.
+Flashing it through the daemon also registered it. The daemon saw it was the board's own build, where its folder and ESP-IDF are, and kept the build to put back if an update fails. Check `python3 daemon/ttycatd.py status`: `core.registered` should be `true`. If it isn't, `~/.ttycat/ttycatd.log` says why, usually a folder whose name isn't the board's, or no `set(BOARD_API ...)` line. From now on Setup > Firmware shows the board's core, and offers each new ttycat release, built on their Mac with this folder. Registering never lets it approve: that's still their choice in Setup.
+
+After any later change to the folder, build it and flash it the same way, and it's registered again with the new build.
+
+Offer to keep the folder in a git repository of their own (`git init` in it), and to share that repository if they'd like others with the board to use it. Never offer a pull request of the folder to this repo.
+
+## When an update says the folder needs changing
+
+Rarely, a release changes `board.h`, and raises `BOARD_API`. Setup then says the folder needs changing instead of offering the update. Read what changed in `firmware/main/board.h` and the template, change their folder to match (with its `set(BOARD_API ...)` line), then build from the new release's source, check it as in step 6, and flash it, which registers it again. Change nothing outside their folder.

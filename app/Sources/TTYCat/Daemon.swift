@@ -101,6 +101,23 @@ struct DaemonStatus: Decodable {
   var term: String?  // the terminal app agents run in
   var flash: FlashInfo?  // nil from a daemon older than firmware updates
   var look: LookInfo?
+  var core: CoreInfo?  // nil from a daemon older than core updates
+}
+
+/// New core releases for a board of the person's own, built on this Mac with their folder: daemon/core_update.py.
+struct CoreInfo: Decodable, Equatable {
+  var registered: Bool  // its folder is known, so the app can build for it
+  var core: String?  // the release its build was made from
+  var available: String?  // a newer signed release
+  var blocked: String = ""  // why that one can't be built for it yet
+  var state: String = "idle"  // idle | building | writing | putting-back | done | failed
+  var pct: Int = 0
+  var msg: String = ""
+  var to: String?
+
+  var busy: Bool { ["building", "writing", "putting-back"].contains(state) }
+  /// Worth a button: there's a newer release, and nothing stands in its way.
+  var canUpdate: Bool { registered && available != nil && blocked.isEmpty }
 }
 
 enum Ctl {

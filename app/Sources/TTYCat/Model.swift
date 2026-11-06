@@ -42,6 +42,7 @@ final class TTYCatModel: ObservableObject {
   let supervisor = Supervisor()
   private var boardAsksSeen: Int?
   private var lastFlashState: String?
+  private var lastCoreState: String?
   private var seenNeeds: Set<String>?
   private var seenPetEv: Int?
   private var seenPetTotal: Int?
@@ -423,7 +424,7 @@ final class TTYCatModel: ObservableObject {
 
   // ---------------------------------------------------------------- firmware
 
-  var flashBusy: Bool { flashStarting || status?.flash?.busy == true }
+  var flashBusy: Bool { flashStarting || status?.flash?.busy == true || status?.core?.busy == true }
 
   func stepFirmware() {
     let board = status?.board
@@ -441,6 +442,34 @@ final class TTYCatModel: ObservableObject {
       if state == "failed" { show("Board update failed: \(flash.msg)") }
     }
     if state != nil { lastFlashState = state }
+
+    // A core update takes minutes: it's said when it ends, wherever you are.
+    let core = status?.core
+    if core?.state != lastCoreState, let core, lastCoreState != nil {
+      if core.state == "done" { show("Board updated to core \(core.to ?? "")") }
+      if core.state == "failed" { show("Core update failed: \(core.msg)") }
+    }
+    if let state = core?.state { lastCoreState = state }
+  }
+
+  /// Builds the newest signed core release with the board's own folder, then writes it: daemon/core_update.py.
+  func updateCore() {
+    guard !flashBusy else { return }
+    flashStarting = true
+    DispatchQueue.global(qos: .userInitiated).async {
+      // The release is checked and unpacked before the build starts; that's quick.
+      let data = Ctl.request(["t": "core-update"], timeout: 30)
+      let reply = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+      let ok = reply?["ok"] as? Bool ?? false
+      let message = reply?["msg"] as? String
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          self.flashStarting = false
+          if !ok { self.show(message?.isEmpty == false ? message! : "the daemon didn't answer") }
+          self.poll()
+        }
+      }
+    }
   }
 
   /// A board that can't approve yet was tapped: the prompt comes up here, where it can be answered.

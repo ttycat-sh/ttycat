@@ -1,13 +1,38 @@
-# ttycat's firmware. Which board it's for is a folder in boards/:
-#   idf.py build                                  the Waveshare ESP32-C5-Touch-LCD-2.8
-#   idf.py -B build-NAME -D BOARD=NAME build      any other, in its own build folder
+# ttycat's firmware. Which board it's for is a folder, in boards/ or anywhere else:
+#   idf.py build                                         the Waveshare ESP32-C5-Touch-LCD-2.8
+#   idf.py -B build-NAME -D BOARD=NAME build             another folder in boards/
+#   idf.py -B build-NAME -D BOARD_DIR=/path/NAME build   a folder of your own, outside this repo
 cmake_minimum_required(VERSION 3.16)
 set(PROJECT_VER "0.1.0")
 
-set(BOARD "waveshare-esp32-c5-touch-lcd-2-8" CACHE STRING "A folder in boards/")
-set(BOARD_DIR "${CMAKE_CURRENT_LIST_DIR}/boards/${BOARD}")
+# The ESP-IDF every release is built with. A release says so, and the Mac app builds with it.
+set(TTYCAT_IDF "5.5")
+include($ENV{IDF_PATH}/tools/cmake/version.cmake)
+if(NOT "${IDF_VERSION_MAJOR}.${IDF_VERSION_MINOR}" STREQUAL TTYCAT_IDF)
+  message(FATAL_ERROR "ttycat builds with ESP-IDF ${TTYCAT_IDF}, and this is "
+                      "${IDF_VERSION_MAJOR}.${IDF_VERSION_MINOR}.${IDF_VERSION_PATCH}")
+endif()
+
+set(BOARD_DIR "" CACHE PATH "A board's folder outside boards/")
+if(BOARD_DIR)
+  get_filename_component(BOARD_DIR "${BOARD_DIR}" ABSOLUTE)
+  get_filename_component(BOARD "${BOARD_DIR}" NAME)  # a folder's name is its component's
+else()
+  set(BOARD "waveshare-esp32-c5-touch-lcd-2-8" CACHE STRING "A folder in boards/")
+  set(BOARD_DIR "${CMAKE_CURRENT_LIST_DIR}/boards/${BOARD}")
+endif()
 if(NOT EXISTS "${BOARD_DIR}/CMakeLists.txt")
-  message(FATAL_ERROR "No board called ${BOARD}: see the folders in firmware/boards")
+  message(FATAL_ERROR "No board folder at ${BOARD_DIR}: see the folders in firmware/boards")
+endif()
+
+# A folder made for another board interface wouldn't build, or worse, would and then misbehave.
+file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/main/board.h" core_api REGEX "^#define BOARD_API ")
+string(REGEX REPLACE "^#define BOARD_API ([0-9]+).*$" "\\1" core_api "${core_api}")
+file(STRINGS "${BOARD_DIR}/CMakeLists.txt" board_api REGEX "^set\\(BOARD_API ")
+string(REGEX REPLACE "^set\\(BOARD_API ([0-9]+)\\).*$" "\\1" board_api "${board_api}")
+if(NOT board_api STREQUAL core_api)
+  message(FATAL_ERROR "${BOARD} was made for board interface '${board_api}', and this is ${core_api}: "
+                      "see BOARD_API in main/board.h")
 endif()
 
 set(EXTRA_COMPONENT_DIRS "${BOARD_DIR}")

@@ -1,7 +1,14 @@
-// All the firmware needs from a board. Each board implements this in its own folder under boards/,
-// and nothing outside that folder knows which board it's running on. See boards/README.md.
+// All the firmware needs from a board. Each board implements this in its own folder, and nothing
+// outside that folder knows which board it's running on. See boards/README.md.
 #pragma once
 #include <stdbool.h>
+
+// This file, what boards call in gfx.h, and a board folder's shape are a promise to every board
+// folder out there, most of which live outside this repo. The Mac app builds new releases with them,
+// so changing any of it breaks their updates. Don't, unless you have to, and then raise this:
+// each folder's CMakeLists.txt says which number it was made for, and a release won't build with
+// a folder made for another.
+#define BOARD_API 1
 
 // Powers everything up, starts the screen and touch, sets the picture's size with gfx_size, and
 // allocates gfx_fb for it. Called once, first.

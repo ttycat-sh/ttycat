@@ -53,7 +53,8 @@ enum FirmwarePlan: Equatable {
   case notConnected
   case identifying                // just connected: it says what it runs within seconds
   case unknownDevice(port: String)  // a port that doesn't answer: could be any device
-  case customFirmware(name: String, port: String, canReplace: Bool, outdated: Bool)  // someone's own: never offered as an update
+  case customFirmware(name: String, port: String, canReplace: Bool, outdated: Bool, core: CoreInfo? = nil)  // someone's own: only ever updated from its own folder
+  case coreUpdate(step: CoreStep, pct: Int, to: String)  // building a new core for someone's own board, and putting it on
   case upToDate(String)
   case boardNewer(board: String, app: String)
   case update(from: String, to: String)
@@ -62,21 +63,32 @@ enum FirmwarePlan: Equatable {
   case restarting(to: String)
 
   static func make(status: DaemonStatus?, image: FirmwareImage?) -> FirmwarePlan {
+    // A board of someone's own is updated from its own folder, so it doesn't need the image this app carries.
+    guard let status, let flash = status.flash else {
+      return image == nil ? .noImage : status == nil ? .notConnected : .daemonTooOld
+    }
+    if let core = status.core, core.busy {
+      let to = core.to ?? "the new core"
+      switch core.state {
+      case "building": return .coreUpdate(step: .building, pct: core.pct, to: to)
+      case "writing": return .coreUpdate(step: flash.state == "restarting" ? .restarting : .writing, pct: flash.pct, to: to)
+      default: return .coreUpdate(step: .puttingBack, pct: flash.pct, to: to)
+      }
+    }
+    if status.board.connected, let port = status.board.port, let fw = status.board.fw, FirmwareVersion.isCustom(fw),
+       !flash.busy {
+      // Firmware for another board would leave this one with a dark screen, even on the same chip.
+      let fits = image?.board != nil && image?.board == status.board.name
+      return .customFirmware(name: fw, port: (port as NSString).lastPathComponent, canReplace: flash.tool && fits,
+                             outdated: status.board.outdated == true, core: status.core)
+    }
     guard let image else { return .noImage }
-    guard let status else { return .notConnected }
-    guard let flash = status.flash else { return .daemonTooOld }
     if flash.state == "flashing" { return .writing(pct: flash.pct, to: flash.to ?? image.version) }
     if flash.state == "restarting" { return .restarting(to: flash.to ?? image.version) }
-    guard status.board.connected, let port = status.board.port, let fw = status.board.fw else {
+    guard status.board.connected, status.board.port != nil, let fw = status.board.fw else {
       if status.board.probing == true { return .identifying }
       guard let silent = status.board.silent?.first else { return .notConnected }
       return flash.tool ? .unknownDevice(port: silent) : .noTool(to: image.version)
-    }
-    if FirmwareVersion.isCustom(fw) {
-      // Firmware for another board would leave this one with a dark screen, even on the same chip.
-      let fits = image.board != nil && image.board == status.board.name
-      return .customFirmware(name: fw, port: (port as NSString).lastPathComponent, canReplace: flash.tool && fits,
-                             outdated: status.board.outdated == true)
     }
     if fw == image.version { return .upToDate(fw) }
     if FirmwareVersion.isNewer(fw, than: image.version) == true { return .boardNewer(board: fw, app: image.version) }
@@ -87,7 +99,12 @@ enum FirmwarePlan: Equatable {
   var wantsAttention: Bool {
     switch self {
     case .update, .unknownDevice: return true
+    case .customFirmware(_, _, _, _, let core): return core?.canUpdate == true
     default: return false
     }
   }
+}
+
+enum CoreStep: Equatable {
+  case building, writing, restarting, puttingBack
 }

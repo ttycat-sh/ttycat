@@ -17,6 +17,7 @@ IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID A
 
 FIRMWARE="$(dirname "$HERE")/firmware/build-release"
 [ -f "$FIRMWARE/ttycat.bin" ] || { echo "run tools/release_firmware.sh first" >&2; exit 1; }
+ls "$(dirname "$HERE")"/firmware/build-release-core/ttycat-core-*.json >/dev/null 2>&1 || { echo "no signed core release: run tools/release_firmware.sh with TTYCAT_SIGNING_KEY" >&2; exit 1; }
 [ -z "$(find "$(dirname "$HERE")/firmware/main" "$(dirname "$HERE")/firmware/boards" -newer "$FIRMWARE/ttycat.bin" -print -quit)" ] || { echo "the firmware has changed: run tools/release_firmware.sh again" >&2; exit 1; }
 
 TTYCAT_FIRMWARE_BUILD=$FIRMWARE TTYCAT_SIGN_IDENTITY="$IDENTITY" TTYCAT_SIGN_TIMESTAMP=--timestamp "$HERE/build.sh"

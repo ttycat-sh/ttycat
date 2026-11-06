@@ -5,7 +5,7 @@
   gallery.py out.png --size 170x320  any size the screens are laid out for (see SCR_MIN_W in gfx.h)
   gallery.py out.png --size 480x480 --frames DIR    also each screen as its own PNG
   gallery.py out.png --size 240x240 --corner 48     a screen with rounded corners, masked as on the glass
-  gallery.py out.png --board NAME                   the size and shape a board's board.c gives, e.g.
+  gallery.py out.png --board NAME|FOLDER            the size and shape a board's board.c gives, e.g.
                                                     --board waveshare-esp32-s3-touch-amoled-2-16
   gallery.py out.png --board NAME --cut             and in red, anything drawn where the glass hides it
   gallery.py out.png --art FILE                     and Bit's screens with that art (docs/PROTOCOL.md, "Art"),
@@ -175,7 +175,8 @@ def png(path, w, h, pixel):
 
 def board_shape(name):
     """The picture's size and its corners, from the #defines in a board's board.c, as its board_begin works them out."""
-    path = HERE.parent.parent / "firmware" / "boards" / name / "board.c"
+    folder = Path(name).expanduser()  # a folder of your own, or the name of one in firmware/boards
+    path = (folder if folder.is_dir() else HERE.parent.parent / "firmware" / "boards" / name) / "board.c"
     if not path.exists():
         sys.exit(f"no board called {name}: see the folders in firmware/boards")
     defs = {k: int(v) for k, v in re.findall(r"^#define\s+(\w+)\s+(\d+)\b", path.read_text(), re.M)}

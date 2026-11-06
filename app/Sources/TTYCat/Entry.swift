@@ -169,13 +169,15 @@ enum Preview {
       machines: [MachineInfo(host: "studio", up: true, answers: true)],
       flash: FlashInfo(
         state: flashState, pct: 62, msg: scene == "fw-fail" ? "Couldn't reach the board. Hold BOOT while you plug it in, then try again." : "",
-        to: "0.6.2", tool: true))
+        to: "0.6.2", tool: true),
+      core: Self.previewCore(scene))
     if scene.hasPrefix("fw") {
       model.page = .setup
       model.firmwareImage = FirmwareImage(version: "0.6.2")
     } else {
       model.firmwareImage = FirmwareImage(version: "0.6.1")
     }
+    if scene.hasPrefix("fw-core") { model.status?.board.fw = "custom-0.10.1-896b3059" }
     model.firmwarePlan = FirmwarePlan.make(
       status: model.status, image: model.firmwareImage)
     if scene.hasPrefix("setup") { model.page = .setup }
@@ -203,5 +205,23 @@ enum Preview {
     }
     host.cacheDisplay(in: host.bounds, to: rep)
     try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+  }
+
+  /// fw-core: an update to offer; -new: not registered; -blocked: needs the folder changed;
+  /// -build, -write, -back: under way; -fail: the new build didn't start.
+  static func previewCore(_ scene: String) -> CoreInfo? {
+    guard scene.hasPrefix("fw-core") else { return nil }
+    var core = CoreInfo(registered: scene != "fw-core-new", core: "0.10.1", available: "0.11.0")
+    switch scene {
+    case "fw-core-blocked": core.blocked = "This update needs the board's folder changed. Ask Claude to update it."
+    case "fw-core-build": (core.state, core.pct, core.to) = ("building", 37, "0.11.0")
+    case "fw-core-write": (core.state, core.to) = ("writing", "0.11.0")
+    case "fw-core-back": (core.state, core.to) = ("putting-back", "0.11.0")
+    case "fw-core-fail":
+      core.state = "failed"
+      core.msg = "The new build didn't work, so custom-0.10.1-896b3059 went back on. (the board didn't come back after writing)"
+    default: break
+    }
+    return core
   }
 }

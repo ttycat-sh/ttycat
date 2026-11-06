@@ -593,14 +593,15 @@ private struct FirmwareSection: View {
         } else {
           PixelButton(title: "Reinstall firmware") { confirming.value = true }
         }
-      case .customFirmware(let name, let port, let canReplace, let outdated):
+      case .customFirmware(let name, let port, let canReplace, let outdated, let core):
         Fact(name: "Board", value: "\(name), custom firmware", good: !outdated)
         if outdated {
-          note("This firmware doesn't match this version of ttycat, so nothing is being sent to it. Rebuild it from the latest source.", warn: true)
-        } else {
-          note("This isn't ttycat's firmware, so it won't be updated from here.")
-          approveChoice(name)
+          note(core?.canUpdate == true
+               ? "This firmware doesn't match this version of ttycat, so nothing is being sent to it. Updating its core fixes that."
+               : "This firmware doesn't match this version of ttycat, so nothing is being sent to it. Rebuild it from the latest source.", warn: true)
         }
+        coreChoice(core)
+        if !outdated { approveChoice(name) }
         if canReplace {
           if confirming.value {
             note("This erases \(name) from \(port).", warn: true)
@@ -633,10 +634,50 @@ private struct FirmwareSection: View {
       case .restarting(let to):
         Fact(name: "Written \(to)", value: "waiting for the board", good: true)
         FlashBar(pct: 100)
+      case .coreUpdate(let step, let pct, let to):
+        switch step {
+        case .building:
+          Fact(name: "Building core \(to)", value: "\(pct)%", good: true)
+          FlashBar(pct: pct)
+          note("On this Mac, with your board's own folder. The first build takes a few minutes. The board works as usual until it's written.")
+        case .writing:
+          Fact(name: "Writing core \(to)", value: "\(pct)%", good: true)
+          FlashBar(pct: pct)
+          note("Don't unplug the board.")
+        case .restarting:
+          Fact(name: "Written core \(to)", value: "waiting for the board", good: true)
+          FlashBar(pct: 100)
+        case .puttingBack:
+          Fact(name: "Putting the old build back", value: "\(pct)%", good: false)
+          FlashBar(pct: pct)
+          note("The new build didn't start. Don't unplug the board.", warn: true)
+        }
       }
       if let flash = m.status?.flash, flash.state == "failed", !m.flashBusy {
         note("Last try failed: \(flash.msg)", warn: true)
       }
+    }
+  }
+
+  /// ttycat's new releases, built for a board of the person's own with its own folder. Never their folder in ttycat.
+  @ViewBuilder private func coreChoice(_ core: CoreInfo?) -> some View {
+    if let core, core.registered {
+      if let available = core.available {
+        Fact(name: "Core", value: "\(core.core ?? "unknown"), \(available) available", good: false)
+        if core.blocked.isEmpty {
+          PixelButton(title: "Update core to \(available)", loud: true, enabled: !m.flashBusy) { m.updateCore() }
+          note("Builds it on this Mac with your board's own folder, then writes it. Takes a few minutes. If the new build doesn't start, the one it runs now goes back on.")
+        } else {
+          note(core.blocked, warn: true)
+        }
+      } else if let version = core.core {
+        Fact(name: "Core", value: "\(version), up to date", good: true)
+      }
+      if core.state == "failed", !core.msg.isEmpty, !m.flashBusy {
+        note("Last update: \(core.msg)", warn: true)
+      }
+    } else {
+      note("ttycat's updates can be built for this board from its own folder. Ask Claude to register the board, and they'll show here.")
     }
   }
 

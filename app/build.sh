@@ -34,6 +34,16 @@ else
   echo "warning: no firmware build found; this app can't update the board" >&2
 fi
 
+# The signed core release it builds for boards of people's own (tools/release_core.py), if there is one.
+# The daemon checks its signature before building it, whatever's here.
+CORE=${TTYCAT_CORE_RELEASE:-$ROOT/firmware/build-release-core}
+if ls "$CORE"/ttycat-core-*.json >/dev/null 2>&1; then
+  mkdir -p "$APP/Contents/Resources/core"
+  cp "$CORE"/ttycat-core-*.json "$CORE"/ttycat-core-*.tar.gz "$APP/Contents/Resources/core/"
+else
+  echo "warning: no core release found; this app can't update boards of people's own" >&2
+fi
+
 # The daemon, and the Python to run it: the app needs nothing else on the Mac. Without app/vendor.sh
 # it still builds, and uses the system's Python, for working on it. A release needs it: see release.sh.
 mkdir -p "$APP/Contents/Resources/daemon"

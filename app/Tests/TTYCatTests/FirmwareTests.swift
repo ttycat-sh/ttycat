@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import TTYCat
 
@@ -82,4 +83,54 @@ private func plan(_ s: DaemonStatus?, image i: FirmwareImage? = image) -> Firmwa
 
 @Test func afterAFailureTheOfferIsBack() {
   #expect(plan(status(fw: "0.6.1", state: "failed")) == .update(from: "0.6.1", to: "0.7.0"))
+}
+
+private func withCore(_ core: CoreInfo, flash state: String = "idle") -> DaemonStatus {
+  var s = status(fw: "custom-0.10.1-896b3059", state: state)
+  s.core = core
+  return s
+}
+
+@Test func aRegisteredBoardIsOfferedTheNewCore() {
+  let core = CoreInfo(registered: true, core: "0.10.1", available: "0.11.0")
+  let p = plan(withCore(core))
+  #expect(p == .customFirmware(name: "custom-0.10.1-896b3059", port: "cu.usbmodem1101", canReplace: true, outdated: false, core: core))
+  #expect(p.wantsAttention)
+}
+
+@Test func aCoreThatCantBeBuiltYetIsntPushed() {
+  for core in [CoreInfo(registered: true, core: "0.10.1", available: "0.11.0", blocked: "needs ESP-IDF 6.0"),
+               CoreInfo(registered: false, core: "0.10.1", available: "0.11.0"),
+               CoreInfo(registered: true, core: "0.11.0")] {
+    #expect(!core.canUpdate)
+    #expect(!plan(withCore(core)).wantsAttention)
+  }
+}
+
+@Test func aCoreUpdateShowsEachStep() {
+  var core = CoreInfo(registered: true, core: "0.10.1", available: "0.11.0", state: "building", pct: 37, to: "0.11.0")
+  #expect(plan(withCore(core)) == .coreUpdate(step: .building, pct: 37, to: "0.11.0"))
+  core.state = "writing"
+  #expect(plan(withCore(core, flash: "flashing")) == .coreUpdate(step: .writing, pct: 40, to: "0.11.0"))
+  #expect(plan(withCore(core, flash: "restarting")) == .coreUpdate(step: .restarting, pct: 40, to: "0.11.0"))
+  core.state = "putting-back"
+  #expect(plan(withCore(core, flash: "flashing")) == .coreUpdate(step: .puttingBack, pct: 40, to: "0.11.0"))
+  core.state = "failed"
+  #expect(!core.busy)
+}
+
+@Test func coreInfoReadsWhatTheDaemonSends() throws {
+  let json = #"{"registered":true,"core":"0.10.1","available":"0.11.0","blocked":"","state":"idle","pct":0,"msg":"","to":null}"#
+  let core = try JSONDecoder().decode(CoreInfo.self, from: Data(json.utf8))
+  #expect(core.canUpdate)
+}
+
+@Test func aBoardOfOnesOwnNeedsNoImageInTheApp() {
+  var s = status(fw: "custom-0.10.2-62d06270")
+  s.core = CoreInfo(registered: true, core: "0.10.2", available: "0.10.3")
+  #expect(plan(s, image: nil) == .customFirmware(name: "custom-0.10.2-62d06270", port: "cu.usbmodem1101", canReplace: false,
+                                                  outdated: false, core: s.core))
+  #expect(plan(s, image: nil).wantsAttention)
+  #expect(plan(status(fw: "0.6.1"), image: nil) == .noImage)
+  #expect(plan(nil, image: nil) == .noImage)
 }
