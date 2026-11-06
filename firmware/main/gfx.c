@@ -29,6 +29,12 @@ void look_set(int skin, int accent) {
   accent_color = ACCENTS[accent];
 }
 
+void look_rgb(uint32_t body, uint32_t shade, uint32_t accent) {
+  bit_body = RGB(body);
+  bit_shade = RGB(shade);
+  accent_color = RGB(accent);
+}
+
 uint16_t *gfx_fb;
 int gfx_w = 240, gfx_h = 320;
 

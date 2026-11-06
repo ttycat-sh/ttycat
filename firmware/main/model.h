@@ -83,6 +83,7 @@ typedef struct {
   int8_t pet_evk;  // what it looks like: a pet_reaction_t, or -1 for nothing
   char pet_name[12];
   bool no_approve;  // the Mac won't take Allow or answers from this build until the person says so
+  char art_id[12];  // the art Bit's stage should show, or "": art.h
   char text[BODY_POOL];          // text[0] is always the empty string
   int text_used;
   question_t q[MAX_QUESTIONS];

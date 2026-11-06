@@ -8,6 +8,8 @@
   gallery.py out.png --board NAME                   the size and shape a board's board.c gives, e.g.
                                                     --board waveshare-esp32-s3-touch-amoled-2-16
   gallery.py out.png --board NAME --cut             and in red, anything drawn where the glass hides it
+  gallery.py out.png --art FILE                     and Bit's screens with that art (docs/PROTOCOL.md, "Art"),
+                                                    e.g. tools/preview/art/snow.json
 
 Compiles the real firmware UI with the preview harness, as preview.py does. Needs only `cc`.
 """
@@ -92,14 +94,60 @@ def steps():
     yield "lost", [*model([BASH, *WORK]), 'go_to("ask:a");', "run(800);", "hush(1);", "run(6000);"]
 
 
-def script():
-    c = ["void m_reset(long long);void m_no_approve(int);void m_add(const char*,const char*,const char*,const char*,const char*,const char*,"
+def art_calls(art):
+    """The art message, built as link.c builds it, through the same checks in art.c."""
+    if not isinstance(art, dict) or art.get("t") != "art":
+        sys.exit('art: not an art message: it needs "t": "art"')
+    if len(json.dumps(art, separators=(",", ":"))) > 8192:
+        sys.exit("art: over the 8 KB a board takes")
+    c = [f"art_begin(&A,{Q(art.get('id', ''))})", f"{int(art.get('f', 0))}>=1", f"{int(art.get('f', 0))}<=ART_FORMAT"]
+    for i, colour in enumerate(art.get("pal", []), 1):
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", str(colour)):
+            sys.exit(f"art: {colour!r} isn't a #rrggbb colour")
+        c.append(f"art_color(&A,{i},0x{colour[1:]})")
+    for sp in art.get("sp", []):
+        rows = ",".join(Q(r) for r in sp.get("px", []))
+        c.append(f"art_sprite(&A,{int(sp.get('w', 0))},{int(sp.get('h', 0))},{int(sp.get('ms', 0))},"
+                 f"(const char*const[]){{{rows or '0'}}},{len(sp.get('px', []))})")
+    modes = {"nap": 1, "work": 2, "walk": 4, "hop": 8}
+    for w in art.get("wear", []):
+        hide = 0
+        for m in w.get("not", []):
+            if m not in modes:
+                sys.exit(f"art: Bit has no mode called {m!r}")
+            hide |= modes[m]
+        c.append(f"art_wear(&A,{int(w.get('sp', -1))},{Q(w.get('on', ''))},{int(w.get('x', 0))},{int(w.get('y', 0))},{hide})")
+    for p in art.get("set", []):
+        c.append(f"art_piece(&A,{int(p.get('sp', -1))},{Q(p.get('on', ''))},{int(p.get('x', 0))},{int(p.get('y', 0))})")
+    if "fall" in art:
+        f = art["fall"]
+        c.append(f"art_fall(&A,{int(f.get('sp', -1))},{int(f.get('n', 0))},{int(f.get('vy', 0))},{int(f.get('vx', 0))},{int(f.get('sway', 0))})")
+    if "say" in art:
+        c.append(f"art_say(&A,{Q(str(art['say']))})")
+    c.append("art_finish(&A)")
+    checks = "".join(f'if(!({x})){{fputs("art: not shown, at: "{Q(x[:60])}"\\n",stderr);exit(3);}}' for x in c)
+    return [checks, "ui_set_art(&A);", f"m_art({Q(art.get('id', ''))});"]
+
+
+def art_steps(art):
+    """Bit's screens with the art, after all the others."""
+    yield "art-say", ["hush(0);", *art_calls(art), *model(WORK[2:3]), "run(1200);", 'go_to("pet");', "run(1500);"]
+    yield "art-home", ["run(4000);"]
+    yield "art-lv8", [*model(WORK[2:3], grown=200, age=120), "run(1500);"]
+    yield "art-working", [*model(WORK[:3]), "run(6000);"]
+    yield "art-asleep", [*model(WORK[2:3], asleep=1), "run(2000);"]
+    yield "art-birthday", [*model(WORK[2:3], birthday=1), "run(1500);"]
+
+
+def script(art=None):
+    c = ["#include <stdio.h>\n#include <stdlib.h>\n#include \"ui.h\"\nstatic art_t A;void m_art(const char*);",
+         "void m_reset(long long);void m_no_approve(int);void m_add(const char*,const char*,const char*,const char*,const char*,const char*,"
          "const char*,const char*,const char*,const char*,const char*,const char*,int,int,int,int,int);void m_q(const char*,int);"
          "void m_opt(const char*,const char*);void m_hist(const char*,const char*,int,const char*);void m_pet(int,int,int,int,int,int,int,int);"
          "void send_model(void);void run(int);void go_to(const char*);void ack(int,const char*);void hush(int);void snap(const char*);",
          "void script(void){"]
     names = []
-    for name, body in steps():
+    for name, body in [*steps(), *(art_steps(art) if art else [])]:
         c += body + [f"snap({Q(name)});"]
         names.append(name)
     return "\n".join(c + ["}"]), names
@@ -179,7 +227,14 @@ def main():
     ap.add_argument("--corner", type=int, default=0, help="the radius of the glass's rounded corners, in the picture's pixels")
     ap.add_argument("--board", help="the size and corners this board's board.c gives the picture")
     ap.add_argument("--cut", action="store_true", help="show in red anything drawn where the glass hides it")
+    ap.add_argument("--art", help="also Bit's screens with this art message, as a JSON file")
     a = ap.parse_args()
+    art = None
+    if a.art:
+        try:
+            art = json.loads(Path(a.art).read_text())
+        except (OSError, ValueError) as e:
+            sys.exit(f"art: {e}")
     w, h = (int(n) for n in a.size.lower().split("x"))
     corner = a.corner
     if a.board:
@@ -187,7 +242,7 @@ def main():
     sources = [str(f) for f in sorted(FW.glob("*.c")) if f.name not in REPLACED]
     with tempfile.TemporaryDirectory() as d:
         d = Path(d)
-        text, names = script()
+        text, names = script(art)
         (d / "script.c").write_text(text)
         built = subprocess.run(["cc", "-O1", "-w", "-I", str(HERE / "stubs"), "-I", str(FW), *sources, str(HERE / "harness.c"), str(d / "script.c"),
                                 "-o", str(d / "fw")], capture_output=True, text=True)

@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "art.h"
 #include "esp_random.h"
 #include "esp_timer.h"
 #include "fonts.h"
@@ -25,6 +26,9 @@ enum {
   STEP_MS = 170,
   REACT_MS = 1300,
   TYPE_MS = 170,
+  STAGE_TOP = 22,       // under the header, where the banner goes
+  SAY_MS = 4000,
+  SAY_AGAIN_MS = 3600000,
 };
 
 // Set by pet_stage, for the screen it's on. These are the official board's.
@@ -64,6 +68,10 @@ static int64_t blink_at, blink_end, look_until;
 static int look;
 static int64_t react_start, banner_until, hello_until;
 static pet_reaction_t react_kind;
+// The art's line: when it's next due, when it was last shown, and for which art.
+static int64_t say_from = -1, said_at, last_drawn;
+static bool say_due;
+static char said_for[sizeof(((art_t *)0)->id)];
 static int top_y = 112 - 14 * 5;
 
 void pet_stage(int width, int ground, int dot) {
@@ -125,6 +133,7 @@ void pet_react(int64_t now, pet_reaction_t what) {
   if (what == PET_RESTED || what == PET_WELCOME || what == PET_BIRTHDAY) {  // rested, and glad to see you
     start_hops(now, what == PET_RESTED ? 3 : 5);
     hello_until = now + 4000;
+    say_due = what != PET_BIRTHDAY;  // after its greeting
     react_start = 0;  // its hops and the words say it
   } else {
     start_hops(now, 2);
@@ -247,11 +256,33 @@ static void draw_helpers(int64_t now, int count) {
   }
 }
 
+// The art's line shows when Bit's screen opens, after a greeting, and when new art comes, for SAY_MS,
+// at most once every SAY_AGAIN_MS. Never on its birthday: that's its day.
+static void plan_say(int64_t now, const pet_look_t *p) {
+  bool opened = now - last_drawn > 1000;
+  last_drawn = now;
+  if (!art_said()[0] || p->birthday) {
+    say_due = false;
+    return;
+  }
+  bool fresh = strcmp(said_for, art_id()) != 0;
+  if (fresh || say_due || (opened && now - said_at >= SAY_AGAIN_MS)) {
+    int64_t from = now > hello_until ? now : hello_until;
+    say_from = from > banner_until ? from : banner_until;
+    said_at = say_from;
+    say_due = false;
+    strlcpy(said_for, art_id(), sizeof(said_for));
+  }
+}
+
 void pet_draw(int64_t now, const pet_look_t *p) {
   advance(now, p);
+  plan_say(now, p);
+  art_draw_stage(now, STAGE_W, STAGE_TOP, GROUND, D);
   draw_helpers(now, p->asleep ? p->working : p->working - 1);
 
   bool napping = mode == NAP, hopping = mode == HOP, walking = mode == WALK, working = mode == WORK;
+  int modes = (napping ? ART_NAP : 0) | (working ? ART_WORK : 0) | (walking ? ART_WALK : 0) | (hopping ? ART_HOP : 0);
   bool joyful = hopping || now < banner_until || now < hello_until;
   color_t body = bit_body, shade = SHADE;
 
@@ -348,7 +379,11 @@ void pet_draw(int64_t now, const pet_look_t *p) {
     block(14, ry[5], 2, 3, WHITE);
     if (!joyful && !napping && !working) block(12, ry[9], 2, 1, WHITE);
   }
-  if (p->scarf && !working && !napping) {  // what it keeps from its first 100 days
+  art_draw_wear(ART_FACE, now, x, ry[5], D, modes);
+  art_draw_wear(ART_BODY, now, x, ry[8], D, modes);
+  if (art_wears(ART_NECK)) {  // in place of the scarf, for the day
+    art_draw_wear(ART_NECK, now, x, ry[10], D, modes);
+  } else if (p->scarf && !working && !napping) {  // what it keeps from its first 100 days
     block(1, ry[10], 14, 1, GREEN);
     block(10, ry[10] + D, 2, 1, GREEN);
   }
@@ -356,6 +391,8 @@ void pet_draw(int64_t now, const pet_look_t *p) {
     block(5, ry[1] - D, 6, 1, GOLD);
     block(6, ry[1] - 2 * D, 4, 1, WHITE);
     block(7, ry[1] - 3 * D, 2, 1, GOLD);
+  } else if (art_wears(ART_HEAD)) {  // in place of what it's earned up there, for the day
+    art_draw_wear(ART_HEAD, now, x, ry[1], D, modes);
   } else if (p->level >= 8) {
     block(5, ry[1] - D, 6, 1, GOLD);
     block(5, ry[1] - 2 * D, 1, 1, GOLD);
@@ -397,5 +434,9 @@ void pet_draw(int64_t now, const pet_look_t *p) {
     gfx_caps(&sk11, bx, 22, GREEN, b, 1);
   } else if (now < hello_until) {
     gfx_caps(&sk11, bx, 22, GREEN, react_kind == PET_BIRTHDAY ? "Happy birthday" : "Welcome back", 1);
+  } else if (say_from >= 0 && now >= say_from && now < say_from + SAY_MS && art_said()[0]) {
+    const char *say = art_said();
+    if (gfx_caps_width(&sk11, say, 1) <= STAGE_W - 2 * bx) gfx_caps(&sk11, bx, 22, GREEN, say, 1);
+    else if (gfx_caps_width(&sk9, say, 1) <= STAGE_W - 2 * bx) gfx_caps(&sk9, bx, 24, GREEN, say, 1);
   }
 }

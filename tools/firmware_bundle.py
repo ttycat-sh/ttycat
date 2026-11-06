@@ -16,7 +16,7 @@ if len(sys.argv) != 3:
 build, out = Path(sys.argv[1]), Path(sys.argv[2])
 args = json.loads((build / "flasher_args.json").read_text())
 app = build / "ttycat.bin"
-found = re.search(rb'\{"t":"hello","fw":"([^"\\]+)","b":"([^"\\]+)","p":\d+\}', app.read_bytes())
+found = re.search(rb'\{"t":"hello","fw":"([^"\\]+)","b":"([^"\\]+)","p":\d+[,}]', app.read_bytes())
 if not found:
     sys.exit(f"no version in {app}: it may be from an older source, so build the firmware again")
 

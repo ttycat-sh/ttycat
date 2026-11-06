@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "art.h"
 #include "board.h"
 #include "cJSON.h"
 #include "sdkconfig.h"
@@ -86,6 +87,20 @@ static void copy_str(char *dst, size_t cap, const cJSON *o, const char *key) {
 static int get_int(const cJSON *o, const char *key, int def) {
   const cJSON *v = cJSON_GetObjectItemCaseSensitive(o, key);
   return cJSON_IsNumber(v) ? v->valueint : def;
+}
+
+// "#rrggbb", and nothing else.
+static bool parse_rgb(const cJSON *v, uint32_t *out) {
+  if (!cJSON_IsString(v) || strlen(v->valuestring) != 7 || v->valuestring[0] != '#') return false;
+  uint32_t rgb = 0;
+  for (int i = 1; i < 7; i++) {
+    char c = v->valuestring[i];
+    int d = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+    if (d < 0) return false;
+    rgb = rgb << 4 | (uint32_t)d;
+  }
+  *out = rgb;
+  return true;
 }
 
 static uint8_t parse_state(const char *s) {
@@ -203,14 +218,86 @@ static void parse_state_msg(const cJSON *j) {
   next.pet_birthday = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(pet, "birthday"));
   next.pet_asleep = cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(pet, "asleep"));
   copy_str(next.pet_name, sizeof(next.pet_name), pet, "name");
-  // Left out when both are the default: an older daemon, or nothing chosen.
+  copy_str(next.art_id, sizeof(next.art_id), j, "art");
+  // Left out when both are the default: an older daemon, or nothing chosen. Numbers into the tables in
+  // gfx.c, or three colours: body, shade and accent.
   const cJSON *look = cJSON_GetObjectItemCaseSensitive(j, "look");
   const cJSON *skin = cJSON_GetArrayItem(look, 0), *accent = cJSON_GetArrayItem(look, 1);
-  look_set(cJSON_IsNumber(skin) ? skin->valueint : 0, cJSON_IsNumber(accent) ? accent->valueint : 0);
+  uint32_t body, shade, acc;
+  if (parse_rgb(skin, &body) && parse_rgb(accent, &shade) && parse_rgb(cJSON_GetArrayItem(look, 2), &acc))
+    look_rgb(body, shade, acc);
+  else
+    look_set(cJSON_IsNumber(skin) ? skin->valueint : 0, cJSON_IsNumber(accent) ? accent->valueint : 0);
   ui_set_model(&next);
 }
 
-static void handle_line(char *text) {
+// docs/PROTOCOL.md, "Art". All of it is read, or none: anything outside art.h's limits, or that isn't
+// what it should be, and it's dropped, and the stage keeps what it had.
+// It's read into memory borrowed for the while: some boards have little to spare.
+static art_t *next_art;
+
+static bool read_art(const cJSON *j) {
+  int f = get_int(j, "f", 0);
+  char id[sizeof(next_art->id) + 1];
+  copy_str(id, sizeof(id), j, "id");
+  if (f < 1 || f > ART_FORMAT || !art_begin(next_art, id)) return false;
+  const cJSON *list, *o;
+  int i = 0;
+  cJSON_ArrayForEach(o, cJSON_GetObjectItemCaseSensitive(j, "pal")) {
+    uint32_t rgb;
+    if (!parse_rgb(o, &rgb) || !art_color(next_art, ++i, rgb)) return false;
+  }
+  cJSON_ArrayForEach(o, cJSON_GetObjectItemCaseSensitive(j, "sp")) {
+    static const char *rows[ART_SPRITE_MAX * ART_FRAMES];
+    int n = 0;
+    const cJSON *row;
+    cJSON_ArrayForEach(row, cJSON_GetObjectItemCaseSensitive(o, "px")) {
+      if (n >= ART_SPRITE_MAX * ART_FRAMES || !cJSON_IsString(row)) return false;
+      rows[n++] = row->valuestring;
+    }
+    if (!art_sprite(next_art, get_int(o, "w", 0), get_int(o, "h", 0), get_int(o, "ms", 0), rows, n)) return false;
+  }
+  cJSON_ArrayForEach(o, cJSON_GetObjectItemCaseSensitive(j, "wear")) {
+    static const char *const modes[] = {"nap", "work", "walk", "hop"};
+    int hide = 0;
+    const cJSON *m;
+    cJSON_ArrayForEach(m, cJSON_GetObjectItemCaseSensitive(o, "not")) {
+      int bit = -1;
+      for (int k = 0; k < 4 && cJSON_IsString(m); k++)
+        if (!strcmp(m->valuestring, modes[k])) bit = k;
+      if (bit < 0) return false;
+      hide |= 1 << bit;
+    }
+    char on[8];
+    copy_str(on, sizeof(on), o, "on");
+    if (!art_wear(next_art, get_int(o, "sp", -1), on, get_int(o, "x", 0), get_int(o, "y", 0), hide)) return false;
+  }
+  cJSON_ArrayForEach(o, cJSON_GetObjectItemCaseSensitive(j, "set")) {
+    char on[8];
+    copy_str(on, sizeof(on), o, "on");
+    if (!art_piece(next_art, get_int(o, "sp", -1), on, get_int(o, "x", 0), get_int(o, "y", 0))) return false;
+  }
+  if ((list = cJSON_GetObjectItemCaseSensitive(j, "fall")) &&
+      !art_fall(next_art, get_int(list, "sp", -1), get_int(list, "n", 0), get_int(list, "vy", 0), get_int(list, "vx", 0),
+                get_int(list, "sway", 0)))
+    return false;
+  const cJSON *say = cJSON_GetObjectItemCaseSensitive(j, "say");
+  if (say && (!cJSON_IsString(say) || !art_say(next_art, say->valuestring))) return false;
+  if (!art_finish(next_art)) return false;
+  ui_set_art(next_art);
+  return true;
+}
+
+static bool parse_art(const cJSON *j) {
+  next_art = malloc(sizeof(*next_art));
+  if (!next_art) return false;
+  bool ok = read_art(j);
+  free(next_art);
+  next_art = NULL;
+  return ok;
+}
+
+static void handle_line(char *text, size_t len) {
   if (text[0] != '{') return;  // boot messages and panic output share the port
   cJSON *j = cJSON_Parse(text);
   if (!j) return;
@@ -219,6 +306,8 @@ static void handle_line(char *text) {
   ui_event_t ev = {0};
   if (!strcmp(t, "state")) {
     parse_state_msg(j);
+  } else if (!strcmp(t, "art")) {
+    if (len > ART_LINE_MAX || !parse_art(j)) link_send_line("art: not shown");  // the daemon logs it
   } else if (!strcmp(t, "hello")) {
     ui_link_hello();
   } else if (!strcmp(t, "ack")) {
@@ -259,7 +348,7 @@ static void rx_task(void *arg) {
       if (buf[i] == '\n') {
         if (!overflow) {
           line[len] = 0;
-          handle_line(line);
+          handle_line(line, len);
         }
         len = 0;
         overflow = false;

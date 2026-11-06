@@ -105,6 +105,7 @@ enum {
   HANDS_OFF_MS = 1500,      // an ask interrupted the pet: see leave_pet_for_ask()
   HANDS_OFF_MORE_MS = 800,
   TOAST_MS = 3000,
+  NEED_ART_MS = 10000,      // asking again for art it's missing
   BRIGHT = 80,
   DIM = 8,
 };
@@ -1499,6 +1500,12 @@ void ui_set_model(const model_t *m) {
   xSemaphoreGive(model_lock);
 }
 
+void ui_set_art(const art_t *a) {
+  xSemaphoreTake(model_lock, portMAX_DELAY);
+  art_use(a);
+  xSemaphoreGive(model_lock);
+}
+
 void ui_link_hello(void) {
   last_rx_ms = now_ms();
   hello_seen = true;
@@ -1624,9 +1631,19 @@ static void draw_pressed(void) {
 
 void ui_tick(void) {
   xSemaphoreTake(model_lock, portMAX_DELAY);
+  bool need_art = false;
   if (model_fresh) {
     model_fresh = false;
     notice_new_asks();
+    // Only the art the Mac names is shown. Missing it, because its line was lost, the board asks again.
+    if (strcmp(model.art_id, art_id())) {
+      if (art_id()[0]) art_use(NULL);
+      static int64_t asked_at = -NEED_ART_MS;
+      if (model.art_id[0] && now_ms() - asked_at >= NEED_ART_MS) {
+        asked_at = now_ms();
+        need_art = true;
+      }
+    }
   }
 
   ui_event_t ev;
@@ -1703,6 +1720,7 @@ void ui_tick(void) {
   xSemaphoreGive(model_lock);
   board_flush();
   if (shot) link_send_shot();
+  if (need_art) link_send_line("{\"t\":\"need\",\"what\":\"art\"}");
   static bool dim_said;
   if (dimmed != dim_said || dim_resend) {  // Bit dozes on a dim screen: the Mac shows that too
     dim_said = dimmed;
@@ -1713,6 +1731,6 @@ void ui_tick(void) {
   int64_t now = now_ms();
   if (now - last_rx_ms > 2000 && now - last_hello > 1000) {
     last_hello = now;
-    link_send_line("{\"t\":\"hello\",\"fw\":\"" FW_NAME "\",\"b\":\"" FW_BOARD "\",\"p\":" FW_PROTOCOL "}");
+    link_send_line("{\"t\":\"hello\",\"fw\":\"" FW_NAME "\",\"b\":\"" FW_BOARD "\",\"p\":" FW_PROTOCOL ",\"art\":" ART_FORMAT_S "}");
   }
 }

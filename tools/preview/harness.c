@@ -142,11 +142,16 @@ void m_pet(int total, int today, int grown, int asleep, int birthday, int age, i
 
 static int64_t since_model;
 static bool hushed;
+static char art_named[12];
+
+// The art each state from here on names: what the daemon does once it's sent the art itself.
+void m_art(const char *id) { strlcpy(art_named, id, sizeof(art_named)); }
 
 // The daemon goes quiet, as if the cable were pulled: for the link-lost screens.
 void hush(int on) { hushed = on; }
 
 void send_model(void) {
+  strlcpy(m.art_id, art_named, sizeof(m.art_id));
   ui_set_model(&m);
   since_model = 0;
 }

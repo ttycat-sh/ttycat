@@ -36,6 +36,8 @@ typedef uint16_t color_t;
 // What the Mac chose: Bit's skin and the accent, by number. Tables in gfx.c, and the app's Look.swift.
 extern color_t accent_color, bit_body, bit_shade;
 void look_set(int skin, int accent);
+// The same, in colours, 0xRRGGBB: for skins the board's tables don't have.
+void look_rgb(uint32_t body, uint32_t shade, uint32_t accent);
 
 typedef struct {
   uint32_t off;
