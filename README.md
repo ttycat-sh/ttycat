@@ -89,6 +89,13 @@ herdr isn't required, on this Mac or on other machines. A session outside it jus
 
 - The app carries the firmware that was built when `app/build.sh` ran, so build the firmware first. The version comes from the binary, and updates are offered only for a board on an older one, so **bump `FW_VERSION` in `firmware/main/model.h` for every release**. A changed build with the same number won't be offered.
 - **Only a release says it's ttycat's firmware, and only signed.** `tools/release_firmware.sh` builds it into `firmware/build-release`, and signs its image and the core's source with the key in `TTYCAT_SIGNING_KEY` (`tools/release_key.py` makes one). The daemon writes firmware that says it's ttycat's own only from an image signed by a key in `daemon/release_keys.json`, whether it comes in the app or from a server. `app/release.sh` won't go without all of it. Anything else built from source says something like `custom-0.9.1-a1b2c3d4` (set `FW_LABEL` for your own first word), where the end comes from the source, so every change has a new name.
+- **A tag is a release.** `.github/workflows/release.yml` runs on `vX.Y.Z`, for prod, and on `vX.Y.Z-dev.N`, for dev. `FW_VERSION` must say `X.Y.Z`.
+  1. It builds the official board's firmware in Espressif's ESP-IDF image, pinned by digest.
+  2. It signs that firmware and the core's source with the environment's key.
+  3. It uploads them to the releases bucket, never replacing a file.
+  4. It offers them to Macs through the update server, with `tools/publish_release.py`. For prod, it also attaches the same files to a GitHub release.
+
+  Its secrets are listed at the top of the workflow.
 - **Your own firmware keeps its place.** The app never offers to update custom firmware, and Setup only replaces it if you ask to and confirm.
 - It uses esptool from your ESP-IDF install (`~/.espressif/python_env`). Without it, Setup says so.
 - Each file's hash is checked before anything's written, esptool refuses a board with a different chip, and firmware made for another board is refused.

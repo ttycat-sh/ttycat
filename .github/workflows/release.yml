@@ -1,0 +1,169 @@
+name: Release
+
+# A tag is a release: RELEASE_PLAN.md in ttycat-pro.
+#   vX.Y.Z         to prod, signed with prod's key, and a GitHub release with the same files
+#   vX.Y.Z-dev.N   to dev, signed with dev's key, which only debug builds trust
+# FW_VERSION in firmware/main/model.h must say X.Y.Z.
+#
+# Each job gets only what it needs. The build runs the firmware's own code, so it gets no secrets. Signing
+# gets the signing key. Publishing gets the upload key and the publish token. Secrets aren't given to
+# workflows from forks, and this only runs on tags.
+#
+# Secrets, for ENV dev and prod:
+#   TTYCAT_SIGNING_KEY_ENV                         tools/release_key.py's secret
+#   SCW_RELEASES_ACCESS_KEY_ENV, SCW_RELEASES_SECRET_KEY_ENV   releases-publisher-ENV: see ttycat-infrastructure
+#   API_PUBLISH_TOKEN_ENV                          the same token as ttycat-infrastructure's
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      env: ${{ steps.tag.outputs.env }}
+      version: ${{ steps.tag.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The tag says which release, and model.h agrees
+        id: tag
+        run: |
+          tag=$GITHUB_REF_NAME
+          case "$tag" in
+            v*-dev.*) env=dev; version=${tag#v}; version=${version%%-dev.*} ;;
+            *) env=prod; version=${tag#v} ;;
+          esac
+          if ! echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::$tag isn't vX.Y.Z or vX.Y.Z-dev.N"
+            exit 1
+          fi
+          have=$(sed -n 's/^#define FW_VERSION "\(.*\)"$/\1/p' firmware/main/model.h)
+          if [ "$have" != "$version" ]; then
+            echo "::error::model.h says $have, and the tag $version"
+            exit 1
+          fi
+          echo "env=$env" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Daemon
+        run: python3 -m unittest discover -s daemon/tests
+
+  build:
+    needs: check
+    runs-on: ubuntu-latest
+    # ESP-IDF 5.5.6, pinned by digest, so anyone can build the same firmware from the same tag.
+    container: docker.io/espressif/idf@sha256:851f136a2c09cf17c13e952b9975606d7d1050be1480b1fd82c7ea4bce78cfb3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The official board's release firmware
+        shell: bash
+        run: |
+          . "$IDF_PATH/export.sh" > /dev/null
+          cd firmware
+          idf.py -B build-release -D FW_RELEASE=1 build
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: build-release
+          if-no-files-found: error
+          path: |
+            firmware/build-release/flasher_args.json
+            firmware/build-release/ttycat.bin
+            firmware/build-release/bootloader/bootloader.bin
+            firmware/build-release/partition_table/partition-table.bin
+
+  sign:
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: build-release
+          path: firmware/build-release
+      - name: Sign the firmware and the core's source
+        env:
+          TTYCAT_SIGNING_KEY: ${{ secrets[format('TTYCAT_SIGNING_KEY_{0}', needs.check.outputs.env)] }}
+        run: |
+          python3 tools/firmware_bundle.py firmware/build-release out/firmware --sign
+          python3 tools/release_core.py out/core
+      - name: A prod release is signed by a key the app trusts
+        if: needs.check.outputs.env == 'prod'
+        run: |
+          python3 - <<'EOF'
+          import sys; sys.path.insert(0, "daemon")
+          import flasher, glob, release
+          flasher.read_image("out/firmware")
+          for path in glob.glob("out/core/ttycat-core-*.json"):
+              release.open_release(path)
+          print("signed by a key in daemon/release_keys.json")
+          EOF
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed
+          path: out
+          if-no-files-found: error
+
+  publish:
+    needs: [check, sign]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the GitHub release
+    env:
+      ENVIRONMENT: ${{ needs.check.outputs.env }}
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed
+          path: out
+      - name: Upload to the releases bucket
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets[format('SCW_RELEASES_ACCESS_KEY_{0}', needs.check.outputs.env)] }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets[format('SCW_RELEASES_SECRET_KEY_{0}', needs.check.outputs.env)] }}
+          AWS_DEFAULT_REGION: fr-par
+          # Scaleway's Object Storage refuses the checksums newer AWS CLIs send by default.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+        run: |
+          bucket="ttycat-$ENVIRONMENT-releases"
+          s3="https://s3.fr-par.scw.cloud"
+          # Never replaced: the same bytes again are fine, so a run can be repeated, anything else stops it.
+          put() {
+            if aws s3api head-object --endpoint-url "$s3" --bucket "$bucket" --key "$2" > /dev/null 2>&1; then
+              aws s3 cp --endpoint-url "$s3" --only-show-errors "s3://$bucket/$2" have
+              cmp -s have "$1" || { echo "::error::$2 is already published, with other contents"; exit 1; }
+              echo "$2: already there"
+              return
+            fi
+            aws s3 cp --endpoint-url "$s3" --only-show-errors --acl public-read "$1" "s3://$bucket/$2"
+            echo "$2: uploaded"
+          }
+          board=$(python3 -c 'import json; print(json.loads(json.load(open("out/firmware/release.json"))["body"])["board"])')
+          for f in out/firmware/*.bin; do put "$f" "releases/firmware/$board/$VERSION/$(basename "$f")"; done
+          put out/firmware/release.json "releases/firmware/$board/$VERSION/release.json"
+          put "out/core/ttycat-core-$VERSION.tar.gz" "releases/core/ttycat-core-$VERSION.tar.gz"
+          put "out/core/ttycat-core-$VERSION.json" "releases/core/ttycat-core-$VERSION.json"
+      - name: Offer it to Macs
+        env:
+          API_PUBLISH_TOKEN: ${{ secrets[format('API_PUBLISH_TOKEN_{0}', needs.check.outputs.env)] }}
+        run: |
+          api=https://api.ttycat.sh
+          [ "$ENVIRONMENT" = dev ] && api=https://api.dev.ttycat.sh
+          python3 tools/publish_release.py --api "$api" out/firmware "out/core/ttycat-core-$VERSION.json"
+      - name: A GitHub release with the same files, so anyone can check them without our server
+        if: needs.check.outputs.env == 'prod'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          board=$(python3 -c 'import json; print(json.loads(json.load(open("out/firmware/release.json"))["body"])["board"])')
+          tar -czf "ttycat-firmware-$board-$VERSION.tar.gz" -C out/firmware .
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "ttycat $VERSION" \
+            --notes "Signed with ttycat's release key: see daemon/release_keys.json." \
+            "ttycat-firmware-$board-$VERSION.tar.gz" out/core/*
