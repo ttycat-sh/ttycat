@@ -18,7 +18,9 @@ int pet_level(int32_t total);
 // How far through this level, out of `of`.
 int pet_progress(int32_t total, int of);
 
-// Stands on the line at y = 112.
+// Where it lives: a stage `width` wide, standing on the line at `ground`, drawn in sprite pixels
+// `dot` screen pixels square. The official board's is 240, 112 and 5. Call once, before it's drawn.
+void pet_stage(int width, int ground, int dot);
 void pet_draw(int64_t now, const pet_look_t *look);
 void pet_react(int64_t now, pet_reaction_t what);
 // Agents finished `n` turns since it last looked, or it reached a new level.

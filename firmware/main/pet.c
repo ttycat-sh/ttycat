@@ -19,18 +19,21 @@
 #define LAPTOP_EDGE RGB(0x7A7A7A)
 
 enum {
-  D = 5,           // screen pixels per sprite pixel
   COLS = 16,
-  GROUND = 112,    // the line it stands on
   LEFT = 6,
-  RIGHT = 240 - COLS * D - 6,
   HOP_MS = 420,
-  HOP_UP = 3 * D,
   STEP_MS = 170,
   REACT_MS = 1300,
-  DESK = LEFT + 15 * D,  // where it works: the middle of the stage
   TYPE_MS = 170,
 };
+
+// Set by pet_stage, for the screen it's on. These are the official board's.
+static int D = 5;          // screen pixels per sprite pixel
+static int GROUND = 112;   // the line it stands on
+static int STAGE_W = 240;
+static int RIGHT = 240 - COLS * 5 - 6;
+static int HOP_UP = 3 * 5;
+static int DESK = LEFT + 15 * 5;  // where it works: the middle of the stage
 
 typedef enum { SIT, WALK, HOP, NAP, WORK } pet_mode_t;
 
@@ -53,7 +56,7 @@ typedef const char *const icon_t[6];
 static icon_t HEART = {".oo.oo.", "ooooooo", "ooooooo", ".ooooo.", "..ooo..", "...o..."};
 
 static pet_mode_t mode = SIT;
-static int x = LEFT + 14 * D;  // always a whole sprite pixel from LEFT, or it never lands on a target
+static int x = LEFT + 14 * 5;  // always a whole sprite pixel from LEFT, or it never lands on a target
 static int target;
 static int64_t mode_until, step_at, hop_start;
 static int hops;
@@ -61,7 +64,19 @@ static int64_t blink_at, blink_end, look_until;
 static int look;
 static int64_t react_start, banner_until, hello_until;
 static pet_reaction_t react_kind;
-static int top_y = GROUND - 14 * D;
+static int top_y = 112 - 14 * 5;
+
+void pet_stage(int width, int ground, int dot) {
+  D = dot;
+  GROUND = ground;
+  STAGE_W = width;
+  RIGHT = width - COLS * D - 6;
+  HOP_UP = 3 * D;
+  DESK = LEFT + ((width - COLS * D) / 2 - LEFT + D / 2) / D * D;
+  x = LEFT + 14 * D > RIGHT ? DESK : LEFT + 14 * D;
+  target = x;
+  top_y = GROUND - 14 * D;
+}
 
 int pet_level(int32_t total) {
   int n = 1;
@@ -217,11 +232,17 @@ void pet_worker(int64_t now, int wx, int wy, int dot, int seed) {
 
 // One small mascot for each agent it can't stand in for, wherever it isn't standing.
 static void draw_helpers(int64_t now, int count) {
-  static const int spots[] = {6, 202, 40, 168, 74, 134};
   enum { W = COLS * 2 };
+  // from the edges inwards, taking turns
+  const int spots[] = {6, STAGE_W - 38, 40, STAGE_W - 72, 74, STAGE_W - 106};
+  int used[6], n = 0;
   for (int i = 0, seed = 1; i < 6 && count > 0; i++) {
-    if (spots[i] + W > x && spots[i] < x + COLS * D) continue;
+    bool clear = !(spots[i] + W > x && spots[i] < x + COLS * D) && spots[i] >= 6 && spots[i] + W <= STAGE_W - 6;
+    for (int k = 0; k < n && clear; k++)
+      if (spots[i] + W > used[k] && spots[i] < used[k] + W) clear = false;
+    if (!clear) continue;
     pet_worker(now, spots[i], GROUND - 14 * 2, 2, seed++);
+    used[n++] = spots[i];
     count--;
   }
 }
@@ -369,11 +390,12 @@ void pet_draw(int64_t now, const pet_look_t *p) {
     int hy = top_y - 14 - t * 16 / REACT_MS;
     if (hy > 18) icon(HEART, cx - 7, hy, 2, WHITE);
   }
+  int bx = gfx_inset(22, 12, 6);  // in from the side, or further where a rounded corner needs it
   if (now < banner_until && (now / 300) % 4 != 3) {
     char b[16];
     snprintf(b, sizeof(b), "Level %d", p->level);
-    gfx_caps(&sk11, 6, 22, GREEN, b, 1);
+    gfx_caps(&sk11, bx, 22, GREEN, b, 1);
   } else if (now < hello_until) {
-    gfx_caps(&sk11, 6, 22, GREEN, react_kind == PET_BIRTHDAY ? "Happy birthday" : "Welcome back", 1);
+    gfx_caps(&sk11, bx, 22, GREEN, react_kind == PET_BIRTHDAY ? "Happy birthday" : "Welcome back", 1);
   }
 }

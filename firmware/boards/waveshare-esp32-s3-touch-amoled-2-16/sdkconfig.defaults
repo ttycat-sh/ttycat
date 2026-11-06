@@ -1,0 +1,16 @@
+# The Waveshare ESP32-S3-Touch-AMOLED-2.16: an ESP32-S3R8 (8 MB octal PSRAM in the chip) with 16 MB of flash.
+CONFIG_IDF_TARGET="esp32s3"
+CONFIG_ESPTOOLPY_FLASHMODE_QIO=y
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+
+# The PSRAM, as Waveshare's own examples set it up.
+CONFIG_SPIRAM=y
+CONFIG_SPIRAM_MODE_OCT=y
+CONFIG_SPIRAM_SPEED_80M=y
+
+# It has no USB-to-serial chip: USB goes straight to the chip.
+CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# esp_codec_dev on the new I2C master driver.
+CONFIG_CODEC_I2C_BACKWARD_COMPATIBLE=n

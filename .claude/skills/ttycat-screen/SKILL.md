@@ -21,7 +21,8 @@ description: Change a screen on the ttycat board or add a new one, such as a big
 - **Prompt screens stay as they are** unless that's what was asked for: rules 2 and 3 in `AGENTS.md`.
 
 ## Drawing
-- Draw with `gfx.h`, on whole pixels, on a 240x320 screen. Reuse the fonts in `fonts.h` and the colours at the top of `ui.c`.
+- Draw with `gfx.h`, on whole pixels. The screen is `SCR_W` by `SCR_H`: 240x320 on the official board, and anything from 170 to 480 wide and 240 to 480 tall on others. Lay out from those, as the screens in `ui.c` do with `RX`, `CW`, `button_pair()` and `tight()`, never from fixed numbers. Check it fits with `python3 tools/preview/gallery.py out.png --size 170x320`, and at `240x240` and `480x480`.
+- **Some screens have rounded corners**, which hide whatever's drawn in them. Anything near the top or bottom edge starts where `gfx_inset(y, h, margin)` says rather than at a fixed margin, as the headers (`HL`, `HR`), the queue's footer and the bottom buttons do: on a square screen that's the margin, so nothing changes there. Check with `gallery.py out.png --size 240x240 --corner 48 --cut`, which should say "hidden by the corners: nothing", and with `--board waveshare-esp32-s3-touch-amoled-2-16`. Reuse the fonts in `fonts.h` and the colours at the top of `ui.c`.
 - The biggest font is `ps40`, 40 px tall. For anything bigger, draw its dots as blocks yourself. Letters can have a blank row in their box, so line things up by looking at the picture.
 - **Bit:** `pet_draw` walks across the whole screen at a fixed height, so it only suits a full-width stage. `pet_worker(now, x, y, dot, seed)` draws Bit at its laptop anywhere, at any size. For Bit standing still, write a small function in `pet.c` from the sprites there.
 - Bit's mood mustn't follow how anyone answered, or how fast: rule 4.

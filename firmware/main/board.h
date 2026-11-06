@@ -3,12 +3,13 @@
 #pragma once
 #include <stdbool.h>
 
-// Powers everything up, starts the screen and touch, and allocates gfx_fb. Called once, first.
+// Powers everything up, starts the screen and touch, sets the picture's size with gfx_size, and
+// allocates gfx_fb for it. Called once, first.
 void board_begin(void);
 void board_backlight(int percent);
 // Puts gfx_fb on the screen, as cheaply as it can: this runs about 60 times a second.
 void board_flush(void);
-// True while a finger is down, with its position in the 240x320 picture.
+// True while a finger is down, with its position in the picture (SCR_W x SCR_H).
 bool board_touch(int *x, int *y);
 
 // The chime when an agent needs you. A board with no speaker leaves both of these empty.

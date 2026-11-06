@@ -31,8 +31,11 @@ enum {
 };
 enum { REG_DIR = 0x02, REG_OUT = 0x03, REG_PWM = 0x05 };
 
+// The panel: an ST7789, 240x320 portrait, the picture's size exactly, so no zoom.
+#define PANEL_W 240
+#define PANEL_H 320
 #define BAND_ROWS 8
-#define BANDS (SCR_H / BAND_ROWS)
+#define BANDS (PANEL_H / BAND_ROWS)
 
 static i2c_master_bus_handle_t bus;
 static i2c_master_dev_handle_t expander, touch;
@@ -136,7 +139,7 @@ static void spi_begin(void) {
       .sclk_io_num = PIN_SCK,
       .quadwp_io_num = -1,
       .quadhd_io_num = -1,
-      .max_transfer_sz = SCR_W * SCR_H * 2,
+      .max_transfer_sz = PANEL_W * PANEL_H * 2,
   };
   ESP_ERROR_CHECK(spi_bus_initialize(SPI2_HOST, &cfg, SPI_DMA_CH_AUTO));
   sd_card_quiet();
@@ -199,6 +202,7 @@ static void lcd_begin(void) {
   ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel, true));
   panel_tuning();
 
+  gfx_size(PANEL_W, PANEL_H);
   gfx_fb = heap_caps_malloc(SCR_W * SCR_H * 2, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
   ESP_ERROR_CHECK(gfx_fb ? ESP_OK : ESP_ERR_NO_MEM);
   gfx_clear(0);

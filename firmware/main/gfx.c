@@ -30,8 +30,77 @@ void look_set(int skin, int accent) {
 }
 
 uint16_t *gfx_fb;
+int gfx_w = 240, gfx_h = 320;
 
-static int cx0 = 0, cy0 = 0, cx1 = SCR_W, cy1 = SCR_H;
+static int cx0 = 0, cy0 = 0, cx1 = 240, cy1 = 320;
+
+bool gfx_size(int w, int h) {
+  if (w < SCR_MIN_W || h < SCR_MIN_H || w > SCR_MAX || h > SCR_MAX) return false;
+  gfx_w = w;
+  gfx_h = h;
+  gfx_noclip();
+  return true;
+}
+
+// The glass: for each row from the top or bottom edge, how many columns at each side its corners hide.
+static int corner_r;
+static uint8_t corner_cut[SCR_MAX / 2];
+
+void gfx_corner(int radius) {
+  int most = (SCR_W < SCR_H ? SCR_W : SCR_H) / 2;
+  corner_r = radius < 0 ? 0 : radius > most ? most : radius;
+  for (int j = 0; j < corner_r; j++) {
+    // a pixel shows if its centre is inside the corner's circle: in half pixels, so it's all whole numbers
+    int dy = 2 * j + 1 - 2 * corner_r, x = 0;
+    while (x < corner_r && (2 * x + 1 - 2 * corner_r) * (2 * x + 1 - 2 * corner_r) + dy * dy > 4 * corner_r * corner_r) x++;
+    corner_cut[j] = (uint8_t)x;
+  }
+}
+
+static int cut_at(int row) {
+  if (!corner_r) return 0;
+  if (row < 0) row = 0;
+  if (row >= SCR_H) row = SCR_H - 1;
+  int from_edge = row < SCR_H / 2 ? row : SCR_H - 1 - row;
+  return from_edge < corner_r ? corner_cut[from_edge] : 0;
+}
+
+int gfx_inset(int y, int h, int margin) {
+  int most = margin;
+  for (int j = y; corner_r && j < y + h; j++)
+    if (cut_at(j) > most) most = cut_at(j);
+  return most;
+}
+
+int gfx_bottom(int x) {
+  int y = SCR_H;
+  while (y > 0 && cut_at(y - 1) > x) y--;
+  return y;
+}
+
+// The part of a border the glass's corners hide, drawn again just inside the glass, so the box stays closed.
+static void glass_border(int x, int y, int w, int h, color_t c) {
+  for (int j = y; j < y + h; j++) {
+    int cut = cut_at(j);
+    if (!cut) continue;
+    int nearer = cut_at(j < SCR_H / 2 ? j - 2 : j + 2), to = cut + 2 > nearer ? cut + 2 : nearer;
+    if (x < cut) gfx_fill(cut, j, (to < x + w ? to : x + w) - cut, 1, c);
+    if (x + w > SCR_W - cut) {
+      int from = SCR_W - to > x ? SCR_W - to : x;
+      gfx_fill(from, j, SCR_W - cut - from, 1, c);
+    }
+  }
+}
+
+void gfx_zoomed(int zoom, int y, int rows, uint16_t *out) {
+  for (int j = y; j < y + rows; j++) {
+    const uint16_t *src = gfx_fb + j * SCR_W;
+    uint16_t *line = out;
+    for (int i = 0; i < SCR_W; i++)
+      for (int k = 0; k < zoom; k++) *out++ = src[i];
+    for (int k = 1; k < zoom; k++, out += SCR_W * zoom) memcpy(out, line, SCR_W * zoom * 2);
+  }
+}
 
 void gfx_clear(color_t c) {
   if ((c & 0xFF) == (c >> 8)) {
@@ -71,6 +140,7 @@ void gfx_border(int x, int y, int w, int h, color_t c) {
   gfx_fill(x, y + h - 2, w, 2, c);
   gfx_fill(x, y + 2, 2, h - 4, c);
   gfx_fill(x + w - 2, y + 2, 2, h - 4, c);
+  if (corner_r) glass_border(x, y, w, h, c);
 }
 
 void gfx_dashed(int x, int y, int w, int h, color_t c) {

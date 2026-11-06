@@ -17,14 +17,21 @@
 #define FAINT RGB(0x505050)
 #define CODE RGB(0x0B0B0B)
 
+// Ten keys fill the width, and four rows of them sit at the bottom, under the text: on the official
+// 240x320 board, keys 24x48, and three lines of text.
+static int row_step(void) {
+  int step = (SCR_H - 94) / 4;
+  return step > 52 ? 52 : step;
+}
+#define KEY_W (SCR_W / 10)
+#define ROW_STEP row_step()
+#define KEYS_TOP (SCR_H - 2 - 4 * ROW_STEP)
+#define KEY_H (ROW_STEP - 4)
+#define BOX_H (KEYS_TOP - 4 - BOX_TOP)
+#define TEXT_LINES ((BOX_H - 26) / 18)
+
 enum {
-  KEYS_TOP = 110,
-  ROW_STEP = 52,
-  KEY_H = 48,
-  KEY_W = 24,
   BOX_TOP = 24,
-  BOX_H = 82,
-  TEXT_LINES = 3,
   // not characters
   K_SHIFT = 1,
   K_PAGE = 2,    // the two symbol pages
@@ -73,29 +80,33 @@ void keyboard_open(char *text, size_t text_cap, const char *prompt) {
   match_case();
 }
 
-// The keys of one row, left to right.
+// The keys of one row, left to right. A row a rounded corner of the glass reaches into keeps clear of
+// it (gfx_inset), with narrower keys if it has to: the others, and every row on a square screen, span the width.
 static int row_keys(int row, key_t_ *out) {
-  int n = 0;
+  int n = 0, edge = gfx_inset(KEYS_TOP + row * ROW_STEP, KEY_H, 0), room = SCR_W - 2 * edge;
   if (row == 3) {
-    static const struct { int16_t w; uint8_t code; } bottom[5] = {{48, K_LAYER}, {24, ','}, {96, ' '}, {24, '.'}, {48, K_DONE}};
-    int x = 0;
+    static const struct { int8_t w; uint8_t code; } bottom[5] = {{2, K_LAYER}, {1, ','}, {4, ' '}, {1, '.'}, {2, K_DONE}};
+    int unit = 10 * KEY_W > room ? room / 10 : KEY_W;
+    int x = (SCR_W - 10 * unit) / 2;
     for (int i = 0; i < 5; i++) {
-      out[n++] = (key_t_){(int16_t)x, bottom[i].w, bottom[i].code};
-      x += bottom[i].w;
+      out[n++] = (key_t_){(int16_t)x, (int16_t)(bottom[i].w * unit), bottom[i].code};
+      x += bottom[i].w * unit;
     }
     return n;
   }
   const char *keys = ROWS[layer][row];
   int count = (int)strlen(keys);
   if (row == 2) {  // wide keys either side
-    int side = (240 - count * KEY_W) / 2;
-    out[n++] = (key_t_){0, (int16_t)side, (uint8_t)(layer <= UPPER ? K_SHIFT : K_PAGE)};
-    for (int i = 0; i < count; i++) out[n++] = (key_t_){(int16_t)(side + i * KEY_W), KEY_W, (uint8_t)keys[i]};
-    out[n++] = (key_t_){(int16_t)(240 - side), (int16_t)side, K_BACK};
+    int unit = (count + 2) * KEY_W > room ? room / (count + 2) : KEY_W;
+    int side = (SCR_W - count * unit) / 2;
+    out[n++] = (key_t_){(int16_t)edge, (int16_t)(side - edge), (uint8_t)(layer <= UPPER ? K_SHIFT : K_PAGE)};
+    for (int i = 0; i < count; i++) out[n++] = (key_t_){(int16_t)(side + i * unit), (int16_t)unit, (uint8_t)keys[i]};
+    out[n++] = (key_t_){(int16_t)(SCR_W - side), (int16_t)(side - edge), K_BACK};
     return n;
   }
-  int x0 = (240 - count * KEY_W) / 2;
-  for (int i = 0; i < count; i++) out[n++] = (key_t_){(int16_t)(x0 + i * KEY_W), KEY_W, (uint8_t)keys[i]};
+  int unit = count * KEY_W > room ? room / count : KEY_W;
+  int x0 = (SCR_W - count * unit) / 2;
+  for (int i = 0; i < count; i++) out[n++] = (key_t_){(int16_t)(x0 + i * unit), (int16_t)unit, (uint8_t)keys[i]};
   return n;
 }
 
@@ -140,26 +151,28 @@ static const char *key_label(uint8_t code, char *one) {
 }
 
 void keyboard_draw(int64_t now, bool finger_down, int fx, int fy) {
-  gfx_icon((const uint8_t[5]){0x02, 0x04, 0x08, 0x04, 0x02}, 6, 8, 1, WHITE);
-  gfx_caps(&sk9, 15, 5, WHITE, "Cancel", 0);
+  int hl = gfx_inset(2, 16, 6);  // the header's ends, clear of any rounded corner
+  gfx_icon((const uint8_t[5]){0x02, 0x04, 0x08, 0x04, 0x02}, hl, 8, 1, WHITE);
+  gfx_caps(&sk9, hl + 9, 5, WHITE, "Cancel", 0);
   char count[12];
   size_t len = strlen(buf);
   snprintf(count, sizeof(count), "%d/%d", (int)len, (int)cap - 1);
-  gfx_right(&vt16, 234, 2, len + 1 >= cap ? ORANGE : FAINT, count);
+  gfx_right(&vt16, SCR_W - hl, 2, len + 1 >= cap ? ORANGE : FAINT, count);
 
-  gfx_box(6, BOX_TOP, 228, BOX_H, CODE, NULL, BLACK);
-  gfx_clip(12, BOX_TOP + 2, 216, 15);
-  gfx_text(&vt14, 12, BOX_TOP + 2, MUTED, prompt_text);
+  gfx_box(6, BOX_TOP, SCR_W - 12, BOX_H, CODE, NULL, BLACK);
+  int pl = gfx_inset(BOX_TOP + 2, 15, 12);  // further in if a rounded corner reaches this far down
+  gfx_clip(pl, BOX_TOP + 2, SCR_W - 2 * pl, 15);
+  gfx_text(&vt14, pl, BOX_TOP + 2, MUTED, prompt_text);
   gfx_noclip();
 
   // the end of the text, and a blinking caret: the box only holds a few lines
   static char shown[TYPED_MAX + 2];
   snprintf(shown, sizeof(shown), "%s%c", buf, (now / 500) % 2 ? ' ' : '_');
+  int top = BOX_TOP + 22, tl = gfx_inset(top, 18, 12);
   gfx_clip(0, 0, 0, 0);
-  int lines = gfx_wrap(&vt18, 12, 0, 216, 18, WHITE, shown, 0, 0);
-  int top = BOX_TOP + 22;
-  gfx_clip(10, top, 220, TEXT_LINES * 18);
-  gfx_wrap(&vt18, 12, top - (lines > TEXT_LINES ? (lines - TEXT_LINES) * 18 : 0), 216, 18, WHITE, shown, 0, 0);
+  int lines = gfx_wrap(&vt18, tl, 0, SCR_W - 2 * tl, 18, WHITE, shown, 0, 0);
+  gfx_clip(tl - 2, top, SCR_W - 2 * tl + 4, TEXT_LINES * 18);
+  gfx_wrap(&vt18, tl, top - (lines > TEXT_LINES ? (lines - TEXT_LINES) * 18 : 0), SCR_W - 2 * tl, 18, WHITE, shown, 0, 0);
   gfx_noclip();
 
   key_t_ held = {0};
@@ -190,7 +203,7 @@ void keyboard_draw(int64_t now, bool finger_down, int fx, int fy) {
     int bw = 36, bx = held.x + held.w / 2 - bw / 2;
     int by = KEYS_TOP + held_row * ROW_STEP - 42;
     if (bx < 2) bx = 2;
-    if (bx + bw > 238) bx = 238 - bw;
+    if (bx + bw > SCR_W - 2) bx = SCR_W - 2 - bw;
     gfx_box(bx, by, bw, 40, WHITE, NULL, BLACK);
     char one[2] = {(char)held.code, 0};
     gfx_center(&ps24, bx, bw, by + 8, BLACK, one, 0);
@@ -213,7 +226,7 @@ void keyboard_draw(int64_t now, bool finger_down, int fx, int fy) {
 
 keyboard_result_t keyboard_release(int x, int y, int64_t now) {
   if (y < 22) {
-    if (x < 80) {
+    if (x < gfx_inset(2, 16, 6) + 74) {
       strlcpy(buf, saved, cap);
       return KEYBOARD_CANCELLED;
     }

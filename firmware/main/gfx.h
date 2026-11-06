@@ -1,11 +1,30 @@
-// Immediate-mode drawing into the 240x320 RGB565 framebuffer. No anti-aliasing:
+// Immediate-mode drawing into the RGB565 framebuffer. No anti-aliasing:
 // everything lands on whole pixels, as the design's pixel system asks.
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
 
-#define SCR_W 240
-#define SCR_H 320
+// The picture's size. The board sets it with gfx_size before anything is drawn: 240x320 on the
+// official board, and anything in these limits elsewhere. Every screen lays itself out to fit.
+#define SCR_W gfx_w
+#define SCR_H gfx_h
+#define SCR_MIN_W 170
+#define SCR_MIN_H 240
+#define SCR_MAX 480
+extern int gfx_w, gfx_h;
+// False, and nothing changes, if the size is outside the limits above.
+bool gfx_size(int w, int h);
+// The glass's shape: the radius of its rounded corners, in the picture's pixels. A board whose screen
+// has rounded corners calls this once, after gfx_size. Every other screen is square, and 0 means that.
+void gfx_corner(int radius);
+// How far in from the left and the right something in rows y to y + h - 1 has to start for the glass
+// to show it whole: `margin`, or more where a rounded corner would hide it. Always `margin` when square.
+int gfx_inset(int y, int h, int margin);
+// How far down something `x` pixels in from the sides can go before a rounded corner hides it: SCR_H when square.
+int gfx_bottom(int x);
+// For a screen with more pixels than the picture: `zoom` screen rows for each of the picture's
+// `rows` rows from `y`, each pixel `zoom` wide, into `out`. Send `out` to the screen as is.
+void gfx_zoomed(int zoom, int y, int rows, uint16_t *out);
 
 // 0xRRGGBB to RGB565, byte-swapped for the panel.
 #define RGB(c)                                                                         \
@@ -38,7 +57,7 @@ void gfx_clear(color_t c);
 void gfx_clip(int x, int y, int w, int h);
 void gfx_noclip(void);
 void gfx_fill(int x, int y, int w, int h, color_t c);
-// A 2 px border inside the box.
+// A 2 px border inside the box. Where a rounded corner of the glass would hide it, it follows the glass.
 void gfx_border(int x, int y, int w, int h, color_t c);
 void gfx_dashed(int x, int y, int w, int h, color_t c);
 // The design's stepped corner: paints the 2x2 corners in the colour behind.

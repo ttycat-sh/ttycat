@@ -141,6 +141,10 @@ void m_pet(int total, int today, int grown, int asleep, int birthday, int age, i
 }
 
 static int64_t since_model;
+static bool hushed;
+
+// The daemon goes quiet, as if the cable were pulled: for the link-lost screens.
+void hush(int on) { hushed = on; }
 
 void send_model(void) {
   ui_set_model(&m);
@@ -152,7 +156,7 @@ void run(int ms) {
     ui_tick();
     clock_ms += 50;
     since_model += 50;
-    if (since_model >= 1000) send_model();
+    if (since_model >= 1000 && !hushed) send_model();
   }
 }
 
@@ -187,9 +191,16 @@ void snap(const char *name) {
 
 void script(void);
 
+// harness OUT_DIR [WIDTH HEIGHT [CORNER]]: the picture is 240x320 and square unless a size, and the
+// radius of the glass's rounded corners, are given.
 int main(int argc, char **argv) {
   if (argc < 2) return 2;
   out_dir = argv[1];
+  if (argc >= 4 && !gfx_size(atoi(argv[2]), atoi(argv[3]))) {
+    fprintf(stderr, "%sx%s is outside what the screens are laid out for\n", argv[2], argv[3]);
+    return 2;
+  }
+  if (argc >= 5) gfx_corner(atoi(argv[4]));
   gfx_fb = calloc(SCR_W * SCR_H, 2);
   ui_begin();
   script();

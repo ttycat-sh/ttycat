@@ -2,13 +2,16 @@
 
 One folder per board. A board has to:
 
-- Provide the functions in `../main/board.h`: start up, show a 240x320 picture, read touch, and optionally chime.
+- Provide the functions in `../main/board.h`: start up, show the picture, read touch, and optionally chime. The picture can be 170 to 480 pixels wide and 240 to 480 tall, and every screen lays itself out to fit. A screen with more pixels shows it zoomed.
 - Say which chip it is and how it's set up, in its `sdkconfig.defaults`.
 - List its files, and the parts of ESP-IDF they need, in its `CMakeLists.txt`.
 - Say how it reaches the Mac, in the same file: USB straight to the chip, or through a USB-to-serial chip.
-- Have the memory for the picture: 154 KB in one piece. The original ESP32 doesn't.
+- Say how its glass is shaped, if it isn't a plain rectangle, with `CORNER_RADIUS` and `EDGE_INSET` in its `board.c` (see the template). Rounded corners hide whatever's drawn in them, so the board passes their radius to `gfx_corner`, and every screen keeps clear of them. Find the radius in the maker's drawing or datasheet, or measure it on the glass, and round up: too small and things get cut off. The Waveshare AMOLED 2.16 folder is an example.
+- Have the memory for the picture: width x height x 2 bytes in one piece, 150 KB at 240x320. Unzoomed it has to be internal RAM, which the original ESP32 doesn't have enough of. Zoomed, it can be PSRAM.
 
 Everything else, the screens, Bit and talking to the Mac, is shared, so a board gets those and their updates for free.
+
+To see whether a board can run it, and how to set it up, run `python3 ../../tools/board_check.py` with its chip and screen (and `--corner` if its corners are rounded). To see every screen at that size, run `python3 ../../tools/preview/gallery.py out.png --size WxH`, adding `--corner R` for rounded corners. Once the board's folder exists, `gallery.py out.png --board NAME` takes the size and corners from its `board.c` and shows each screen as its glass will, and `--cut` paints anything the corners would hide in red.
 
 To add one, copy `template` to a folder named after your board, using letters, numbers and dashes. Build it with:
 

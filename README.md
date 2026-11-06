@@ -218,7 +218,7 @@ Added beyond the design: the swipe-up full view, row scrolling on the queue, mac
 
 These are about the Waveshare board, in `firmware/boards/waveshare-esp32-c5-touch-lcd-2-8`.
 
-- **Screen:** the UI redraws into a 240x320 RGB565 framebuffer in internal RAM. Only rows that changed go to the ST7789, over SPI at 80 MHz.
+- **Screen:** the UI redraws into an RGB565 framebuffer in internal RAM, 240x320 on this board. Only rows that changed go to the ST7789, over SPI at 80 MHz. On other boards the screens lay themselves out for any size from 170 to 480 pixels wide and 240 to 480 tall: see `firmware/boards`.
 - **Reset and backlight:** both resets, the backlight and the speaker amp sit behind the CH32V003 at I2C 0x24. Waveshare's firmware on that chip stays as it is; flashing here only touches the ESP32-C5.
 - **SD slot:** it shares the panel's SPI bus, so at boot any inserted card gets CMD0 to move it to SPI mode. A card left in SD mode can read pixel data as commands.
 - **Panel gamma:** taken from the `touchreader` project (`rlcd/ereader/touchreader`), as are the touch and expander protocols.

@@ -11,6 +11,8 @@ import shutil
 import sys
 from pathlib import Path
 
+if len(sys.argv) != 3:
+    sys.exit("usage: firmware_bundle.py BUILD_DIR OUT_DIR, such as firmware/build-NAME out")
 build, out = Path(sys.argv[1]), Path(sys.argv[2])
 args = json.loads((build / "flasher_args.json").read_text())
 app = build / "ttycat.bin"

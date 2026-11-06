@@ -322,7 +322,8 @@ void link_send_shot(void) {
     size_t n = total - off < CHUNK ? total - off : CHUNK, w = 0;
     mbedtls_base64_encode(b64, sizeof(b64), &w, fb + off, n);
     b64[w] = 0;
-    snprintf(out, sizeof(out), "{\"t\":\"shot\",\"i\":%d,\"n\":%d,\"d\":\"%s\"}", seq, count, b64);
+    snprintf(out, sizeof(out), "{\"t\":\"shot\",\"i\":%d,\"n\":%d,\"w\":%d,\"h\":%d,\"d\":\"%s\"}", seq, count,
+             SCR_W, SCR_H, b64);
     link_send_line(out);
   }
 }

@@ -148,7 +148,7 @@ static int diff_scroll;
 static int queue_top;  // rows scrolled past, on the queue
 static bool ask_clipped;  // the code box doesn't show all of this ask
 
-static hit_t hits[24];
+static hit_t hits[48];
 static int hit_n;
 
 // The answers so far to the question being asked, kept if you step away and come back.
@@ -272,6 +272,68 @@ static void open_next_need(void) {
   go(SCR_QUEUE);
 }
 
+// ---------------------------------------------------------------- layout
+
+// Every screen lays itself out on SCR_W x SCR_H. On the official 240x320 board this all comes to the
+// design's own numbers. Under 300 px tall, screens take a short form: less above, smaller buttons.
+#define RX (SCR_W - 6)          // the right margin
+#define CW (SCR_W - 12)         // a card, margin to margin
+
+static bool tight(void) { return SCR_H < 300; }
+
+// Rounded glass: the header's ends, the margin or further in where a corner would hide them (gfx_inset).
+// On a square screen these are the margins.
+#define HL gfx_inset(2, 16, 6)
+#define HR (SCR_W - HL)
+
+// Two buttons side by side in rows y to y + h - 1: the margins apart, or further in for rounded corners.
+typedef struct {
+  int x0, x1, w;
+} pair_t;
+
+static pair_t button_pair(int y, int h) {
+  int l = gfx_inset(y, h, 6), w = (SCR_W - 2 * l - 6) / 2;
+  return (pair_t){l, l + w + 6, w};
+}
+
+// Bit's sprite pixel: 5 on the official board, less on a small screen, more on a big one.
+static int pet_dot(void) {
+  if (SCR_W < 240 || tight()) return 4;
+  int wide = (SCR_W - 240) / 60, tall = (SCR_H - 320) / 60, more = wide < tall ? wide : tall;
+  return 5 + (more > 3 ? 3 : more);
+}
+
+// The line Bit stands on, on its home screen.
+static int pet_ground(void) { return 22 + 18 * pet_dot(); }
+
+// Rows of sessions under the queue's hero.
+static int queue_page(void) {
+  int n = (SCR_H - 131) / 37;
+  return n < 1 ? 1 : n;
+}
+
+// Where an ask's parts go: its card, the code box in it, the two buttons and the hint under them.
+typedef struct {
+  int code_y, card_b, btn_y, btn_h, hint_y;
+} ask_frame_t;
+
+static ask_frame_t ask_frame(void) {
+  ask_frame_t f;
+  if (tight()) {
+    f.code_y = 72;
+    f.btn_h = 44;
+    f.hint_y = SCR_H - 20;
+    f.btn_y = f.hint_y - 4 - f.btn_h;
+  } else {
+    f.code_y = 112;
+    f.btn_h = 64;
+    f.hint_y = SCR_H - 22;
+    f.btn_y = SCR_H - 94;
+  }
+  f.card_b = f.btn_y - 6;
+  return f;
+}
+
 // ---------------------------------------------------------------- shared parts
 
 static void mac_indicator(int right, color_t dot, color_t text) {
@@ -284,22 +346,40 @@ static void mac_indicator(int right, color_t dot, color_t text) {
 static void button(int x, int y, int w, int h, color_t bg, const color_t *border, icon5_t icon, int scale,
                    color_t icon_c, int gap, const font_t *f, color_t text_c, const char *label, int spacing) {
   gfx_box(x, y, w, h, bg, border, BLACK);
+  // a narrow button closes its letters up, then takes the smaller lettering, before it clips
+  int tw = gfx_caps_width(f, label, spacing);
+  if (tw > w - 8 && spacing) tw = gfx_caps_width(f, label, spacing = 0);
+  if (tw > w - 8 && f == &sk11) tw = gfx_caps_width(f = &sk9, label, spacing);
   int total = (icon ? 5 * scale + gap : 0) + f->size;
   int top = y + (h - total) / 2;
   if (icon) {
     gfx_icon(icon, x + (w - 5 * scale) / 2, top, scale, icon_c);
     top += 5 * scale + gap;
   }
-  int tw = gfx_caps_width(f, label, spacing);
+  gfx_clip(x + 2, y, w - 4, h);
   gfx_caps(f, x + (w - tw) / 2, top, text_c, label, spacing);
+  gfx_noclip();
 }
 
 static void card_label(const session_t *s, color_t c) {
   char label[44];
   snprintf(label, sizeof(label), "%s \xB7 %s", who(s), s->project);
-  gfx_clip(16, 36, 208, 12);
-  gfx_caps(&sk11, 16, 36, c, label, 0);
+  int l = gfx_inset(36, 12, 16);
+  gfx_clip(l, 36, SCR_W - 2 * l, 12);
+  gfx_caps(&sk11, l, 36, c, label, 0);
   gfx_noclip();
+}
+
+// What it wants to do, in big letters, and the verb: one over the other, or side by side when short.
+static void ask_header(const session_t *s, const char *verb, color_t verb_c, color_t tool_c) {
+  const char *tool = s->tool[0] ? s->tool : "ASK";
+  if (tight()) {
+    int x = gfx_text(&ps16, 14, 50, tool_c, tool);
+    gfx_text(&vt16, x + 8, 50 + ps16.base - vt16.base, verb_c, verb);
+    return;
+  }
+  gfx_text(&vt16, 16, 52, verb_c, verb);
+  gfx_text(gfx_width(&ps32, tool, 0) <= CW - 16 ? &ps32 : &ps24, 14, 70, tool_c, tool);
 }
 
 // The command or diff inside the ask card's code box.
@@ -367,54 +447,54 @@ static void open_button(int x, int y, int w, int h, const font_t *f, int scale) 
 
 // ---------------------------------------------------------------- 01 Boot
 
+// One line of the link's checklist: done, waiting on it, or not yet.
+static void link_row(int y, int state, const char *text) {
+  if (state == 2) {
+    gfx_box(20, y, 14, 14, GREEN, NULL, TILE);
+    gfx_icon(I_CHECK, 22, y + 2, 2, BLACK);
+  } else if (state == 1) {
+    gfx_border(20, y, 14, 14, ORANGE);
+    gfx_fill(25, y + 5, 4, 4, ORANGE);
+    gfx_right(&vt16, SCR_W - 20, y - 1, ORANGE, "...");
+  } else {
+    gfx_border(20, y, 14, 14, FAINT);
+  }
+  gfx_text(&vt18, 42, y - 2, state ? WHITE : FAINT, text);
+}
+
 static void draw_boot(void) {
-  gfx_caps(&sk9, 6, 5, WHITE, "ttycat", 0);
-  mac_indicator(234, FAINT, FAINT);
+  bool t = tight();
+  gfx_caps(&sk9, HL, 5, WHITE, "ttycat", 0);
+  mac_indicator(HR, FAINT, FAINT);
 
-  gfx_box(6, 24, 228, 108, CARD, NULL, BLACK);
-  gfx_caps(&sk11, 16, 36, WHITE, "Waiting for", 0);
+  int card_h = t ? 74 : 108;
+  gfx_box(6, 24, CW, card_h, CARD, NULL, BLACK);
+  gfx_caps(&sk11, gfx_inset(36, 12, 16), 36, WHITE, "Waiting for", 0);
   gfx_text(&ps32, 14, 58, ORANGE, "MAC");
-  int pw = gfx_width(&vt16, "start the daemon", 0) + 12;
-  gfx_box(14, 104, pw, 20, ORANGE, NULL, CARD);
-  gfx_text(&vt16, 20, 106, BLACK, "start the daemon");
-  gfx_box(150, 30, 78, 96, BLACK, NULL, CARD);
-  gfx_sprite(S_SLEEP, 154, 44, 6, 1, DOT_OFF, ORANGE, WHITE, GREEN);
+  if (!t) {
+    int pw = gfx_width(&vt16, "start the daemon", 0) + 12;
+    gfx_box(14, 104, pw, 20, ORANGE, NULL, CARD);
+    gfx_text(&vt16, 20, 106, BLACK, "start the daemon");
+  }
+  if (SCR_W >= 220) {  // Bit asleep, if there's room beside the words
+    int dot = t ? 4 : 6, bh = card_h - 12, bx = SCR_W - 90 - (gfx_inset(30, bh, 12) - 12), size = 10 * (dot + 1) - 1;
+    gfx_box(bx, 30, 78, bh, BLACK, NULL, CARD);
+    gfx_sprite(S_SLEEP, t ? bx + (78 - size) / 2 : bx + 4, t ? 30 + (bh - size) / 2 : 44, dot, 1, DOT_OFF, ORANGE, WHITE, GREEN);
+  }
 
-  gfx_box(6, 138, 228, 176, TILE, &c_line, BLACK);
-  gfx_caps(&sk9, 20, 152, MUTED, "Link", 0);
-
-  gfx_box(20, 173, 14, 14, GREEN, NULL, TILE);
-  gfx_icon(I_CHECK, 22, 175, 2, BLACK);
-  gfx_text(&vt18, 42, 171, WHITE, "USB power");
-
+  int y0 = 24 + card_h + 6, step = t ? 24 : 28, r0 = y0 + (t ? 30 : 35);
+  gfx_box(6, y0, CW, SCR_H - 6 - y0, TILE, &c_line, BLACK);
+  gfx_caps(&sk9, 20, y0 + 14, MUTED, "Link", 0);
   bool serial = link_usb_connected();
-  if (serial) {
-    gfx_box(20, 201, 14, 14, GREEN, NULL, TILE);
-    gfx_icon(I_CHECK, 22, 203, 2, BLACK);
-  } else {
-    gfx_border(20, 201, 14, 14, ORANGE);
-    gfx_fill(25, 206, 4, 4, ORANGE);
-    gfx_right(&vt16, 220, 200, ORANGE, "...");
-  }
-  gfx_text(&vt18, 42, 199, WHITE, "serial open");
+  link_row(r0, 2, "USB power");
+  link_row(r0 + step, serial ? 2 : 1, "serial open");
+  link_row(r0 + 2 * step, hello_seen ? 2 : serial ? 1 : 0, "daemon hello");
 
-  if (hello_seen) {
-    gfx_box(20, 229, 14, 14, GREEN, NULL, TILE);
-    gfx_icon(I_CHECK, 22, 231, 2, BLACK);
-    gfx_text(&vt18, 42, 227, WHITE, "daemon hello");
-  } else if (serial) {
-    gfx_border(20, 229, 14, 14, ORANGE);
-    gfx_fill(25, 234, 4, 4, ORANGE);
-    gfx_right(&vt16, 220, 228, ORANGE, "...");
-    gfx_text(&vt18, 42, 227, WHITE, "daemon hello");
-  } else {
-    gfx_border(20, 229, 14, 14, FAINT);
-    gfx_text(&vt18, 42, 227, FAINT, "daemon hello");
-  }
-
-  gfx_fill(20, 272, 200, 2, LINE);
-  gfx_text(&vt16, 20, 284, MUTED, "ttycat daemon");
-  gfx_right(&vt16, 220, 284, MUTED, "fw " FW_VERSION);
+  if (!t) gfx_fill(20, SCR_H - 48, CW - 28, 2, LINE);
+  int fy = SCR_H - (t ? 26 : 36), fx = gfx_inset(fy, 16, 20);
+  if (gfx_width(&vt16, "ttycat daemon fw " FW_VERSION, 0) + 8 <= SCR_W - 2 * fx - 4)
+    gfx_text(&vt16, fx, fy, MUTED, "ttycat daemon");
+  gfx_right(&vt16, SCR_W - fx, fy, MUTED, "fw " FW_VERSION);
 }
 
 // ---------------------------------------------------------------- the pet
@@ -444,13 +524,13 @@ static const char *next_keepsake(int level) {
 
 // Home: the pet and how far it's come, the time, and how the agents are doing.
 static void draw_pet_screen(void) {
-  gfx_icon(I_LEFT, 6, 8, 1, WHITE);
-  int ax = gfx_caps(&sk9, 15, 5, WHITE, "Agents", 0);
+  gfx_icon(I_LEFT, HL, 8, 1, WHITE);
+  int ax = gfx_caps(&sk9, HL + 9, 5, WHITE, "Agents", 0);
   char count[8];
   snprintf(count, sizeof(count), "%d", model.n);
   gfx_text(&vt16, ax + 6, 2, MUTED, count);
-  hit(0, 0, 90, 22, A_QUEUE, 0);
-  mac_indicator(234, GREEN, MUTED);
+  hit(0, 0, HL + 84, 22, A_QUEUE, 0);
+  mac_indicator(HR, GREEN, MUTED);
 
   int32_t gained = model.pet_total - pet_seen;
   int level = pet_level(model.pet_grown);
@@ -463,7 +543,8 @@ static void draw_pet_screen(void) {
     pet_react(now_ms(), (pet_reaction_t)pet_hello);
     pet_hello = -1;
   }
-  gfx_dashed(6, 112, 228, 2, LINE);
+  int g = pet_ground();
+  gfx_dashed(6, g, CW, 2, LINE);
   draw_pet_stage();
   int px, py, pw, ph;
   pet_bounds(&px, &py, &pw, &ph);
@@ -472,39 +553,61 @@ static void draw_pet_screen(void) {
   // how far it's come
   char line[44];
   snprintf(line, sizeof(line), "LV %d", level);
-  gfx_text(&vt18, 6, 118, WHITE, model.pet_name);
-  gfx_right(&vt18, 234, 118, ORANGE, line);
-  enum { CELLS = 23, CELL = 10 };
-  int filled = pet_progress(model.pet_grown, CELLS);
-  for (int i = 0; i < CELLS; i++) gfx_fill(6 + i * CELL, 138, CELL - 2, 8, i < filled ? ORANGE : DOT_OFF);
-  gfx_text(&vt16, 6, 150, MUTED, next_keepsake(level));
+  gfx_text(&vt18, 6, g + 6, WHITE, model.pet_name);
+  gfx_right(&vt18, RX, g + 6, ORANGE, line);
+  enum { CELL = 10 };
+  int cells = (CW + 2) / CELL;
+  int filled = pet_progress(model.pet_grown, cells);
+  for (int i = 0; i < cells; i++) gfx_fill(6 + i * CELL, g + 26, CELL - 2, 8, i < filled ? ORANGE : DOT_OFF);
+  const char *next = next_keepsake(level);
+  gfx_text(&vt16, 6, g + 38, MUTED, next);
   snprintf(line, sizeof(line), "%d day%s old", model.pet_age, model.pet_age == 1 ? "" : "s");
-  gfx_right(&vt16, 234, 150, MUTED, line);
+  if (gfx_width(&vt16, next, 0) + 8 + gfx_width(&vt16, line, 0) <= CW) gfx_right(&vt16, RX, g + 38, MUTED, line);
 
-  // the desk clock
-  struct tm t;
-  clock_parts(&t);
+  // how the agents are doing, along the bottom
+  bool t = tight();
+  int box_h = t ? 34 : 46, box_y = t ? SCR_H - 6 - box_h : SCR_H - 74;
+
+  // the desk clock, in what's left between: with the date if there's room
+  struct tm tm;
+  clock_parts(&tm);
   char hh[3], mm[3], date[20];
-  snprintf(hh, sizeof(hh), "%02d", t.tm_hour);
-  snprintf(mm, sizeof(mm), "%02d", t.tm_min);
-  int w = gfx_width(&ps40, hh, -2) + gfx_width(&ps40, ":", -2) + gfx_width(&ps40, mm, -2);
-  int x = gfx_text_sp(&ps40, (SCR_W - w) / 2, 180, WHITE, hh, -2);
-  x = gfx_text_sp(&ps40, x, 180, ORANGE, ":", -2);
-  gfx_text_sp(&ps40, x, 180, WHITE, mm, -2);
-  static const char *const days[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-  static const char *const months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
-  snprintf(date, sizeof(date), "%s %d %s", days[t.tm_wday], t.tm_mday, months[t.tm_mon]);
-  gfx_center(&sk9, 0, SCR_W, 228, MUTED, date, 1);
+  snprintf(hh, sizeof(hh), "%02d", tm.tm_hour);
+  snprintf(mm, sizeof(mm), "%02d", tm.tm_min);
+  int top = g + 54, gap = box_y - top;
+  const font_t *cf = &ps40;
+  int w = 0;
+  for (int k = 0; k < 3; k++) {  // as big as fits
+    cf = k == 0 ? &ps40 : k == 1 ? &ps32 : &ps24;
+    w = gfx_width(cf, hh, -2) + gfx_width(cf, ":", -2) + gfx_width(cf, mm, -2);
+    if (w <= CW && cf->size <= gap - 8) break;
+  }
+  if (cf->size <= gap - 4) {
+    bool with_date = gap >= 80;
+    int cy = with_date ? top + 14 + (gap - 80) / 2 : top + (gap - cf->size) / 2;
+    int x = gfx_text_sp(cf, (SCR_W - w) / 2, cy, WHITE, hh, -2);
+    x = gfx_text_sp(cf, x, cy, ORANGE, ":", -2);
+    gfx_text_sp(cf, x, cy, WHITE, mm, -2);
+    if (with_date) {
+      static const char *const days[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+      static const char *const months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                                           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+      snprintf(date, sizeof(date), "%s %d %s", days[tm.tm_wday], tm.tm_mday, months[tm.tm_mon]);
+      gfx_center(&sk9, 0, SCR_W, cy + 48, MUTED, date, 1);
+    }
+  }
 
-  // how the agents are doing
   int working = count_state(ST_WORKING), done = count_state(ST_DONE);
   if (done) snprintf(line, sizeof(line), "%d done \xB7 %d working \xB7 tap to see", done, working);
   else if (working) snprintf(line, sizeof(line), "%d agent%s working", working, working == 1 ? "" : "s");
   else snprintf(line, sizeof(line), "%d turn%s today", (int)model.pet_today, model.pet_today == 1 ? "" : "s");
-  gfx_box(6, 246, 228, 46, TILE, &c_line, BLACK);  // the toast has the rows under it
-  gfx_center(&vt18, 0, SCR_W, 260, done ? GREEN : WHITE, line, 0);
-  hit(6, 246, 228, 46, A_QUEUE, 0);
+  int bl = gfx_inset(box_y, box_h, 6), bw = SCR_W - 2 * bl;
+  if (done && gfx_width(&vt18, line, 0) > bw - 8) snprintf(line, sizeof(line), "%d done \xB7 %d working", done, working);
+  gfx_box(bl, box_y, bw, box_h, TILE, &c_line, BLACK);  // the toast has the rows under it
+  gfx_clip(bl + 2, box_y, bw - 4, box_h);
+  gfx_center(&vt18, 0, SCR_W, box_y + (box_h - 18) / 2, done ? GREEN : WHITE, line, 0);
+  gfx_noclip();
+  hit(bl, box_y, bw, box_h, A_QUEUE, 0);
 }
 
 // An ask took the screen. Whoever was tapping is still tapping, and the next screens
@@ -517,33 +620,40 @@ static void leave_pet_for_ask(void) {
 // ---------------------------------------------------------------- A1 Overview
 
 static void draw_overview(void) {
-  int x = gfx_caps(&sk9, 6, 5, WHITE, "Overview", 0);
+  int x = gfx_caps(&sk9, HL, 5, WHITE, "Overview", 0);
   char line[24];
   snprintf(line, sizeof(line), "%d session%s", model.n, model.n == 1 ? "" : "s");
   gfx_text(&vt16, x + 8, 2, MUTED, line);
-  gfx_icon(I_CROSS, 221, 5, 2, WHITE);
-  hit(196, 0, 44, 22, A_QUEUE, 0);
+  gfx_icon(I_CROSS, HR - 13, 5, 2, WHITE);
+  hit(HR - 38, 0, SCR_W - HR + 38, 22, A_QUEUE, 0);
 
+  // four cards, two by two, over the bar along the bottom
+  int bar_y = SCR_H - 52, card_w = (CW - 4) / 2, card_h = (bar_y - 32) / 2, iw = card_w - 20;
+  bool roomy = card_h >= 110;
   for (int i = 0; i < 4; i++) {
-    int cx = 6 + (i % 2) * 116, cy = 22 + (i / 2) * 122;
+    int cx = 6 + (i % 2) * (card_w + 4), cy = 22 + (i / 2) * (card_h + 4);
     int st[5] = {0};
     for (int k = 0; k < model.n; k++)
       if (!strcmp(model.s[k].agent, AGENT_CODES[i])) st[model.s[k].state]++;
     int count = st[0] + st[1] + st[2] + st[3] + st[4], need = st[ST_BLOCKED] + st[ST_ERROR];
-    gfx_box(cx, cy, 112, 118, need ? CARD : TILE, need ? &c_orange : &c_line, BLACK);
-    int tx = gfx_caps(&sk11, cx + 10, cy + 11, WHITE, AGENT_CODES[i], 0);
-    gfx_text(&vt14, tx + 6, cy + 10, MUTED2, AGENT_NAMES[i]);
+    gfx_box(cx, cy, card_w, card_h, need ? CARD : TILE, need ? &c_orange : &c_line, BLACK);
+    int ny = roomy ? cy + 11 : cy + 8;
+    gfx_clip(cx, cy, card_w - 6, card_h);
+    // on the outer side, further in where a rounded corner reaches
+    int tx = gfx_caps(&sk11, i % 2 ? cx + 10 : gfx_inset(ny, 12, cx + 10), ny, WHITE, AGENT_CODES[i], 0);
+    gfx_text(&vt14, tx + 6, ny - 1, MUTED2, AGENT_NAMES[i]);
+    gfx_noclip();
     char num[8];
     snprintf(num, sizeof(num), "%d", count);
-    gfx_text(&ps24, cx + 10, cy + 30, count ? WHITE : FAINT, num);
+    gfx_text(roomy ? &ps24 : &ps16, cx + 10, roomy ? cy + 30 : cy + 24, count ? WHITE : FAINT, num);
     // eight segments: blocked, error, done, working, idle
     static const uint8_t order[5] = {ST_BLOCKED, ST_ERROR, ST_DONE, ST_WORKING, ST_IDLE};
     color_t tone[5] = {ORANGE, ERR_SEG, GREEN, WHITE, FAINT};
-    int seg = 0;
+    int seg = 0, sy = roomy ? cy + 60 : cy + 44;
     for (int k = 0; k < 5; k++)
       for (int j = 0; j < st[order[k]] && seg < 8; j++, seg++)
-        gfx_fill(cx + 10 + seg * 92 / 8, cy + 60, 92 / 8 - (seg == 7 ? 0 : 1), 6, tone[k]);
-    for (; seg < 8; seg++) gfx_fill(cx + 10 + seg * 92 / 8, cy + 60, 92 / 8 - (seg == 7 ? 0 : 1), 6, DOT_OFF);
+        gfx_fill(cx + 10 + seg * iw / 8, sy, iw / 8 - (seg == 7 ? 0 : 1), 6, tone[k]);
+    for (; seg < 8; seg++) gfx_fill(cx + 10 + seg * iw / 8, sy, iw / 8 - (seg == 7 ? 0 : 1), 6, DOT_OFF);
 
     char l1[32] = "", l2[32] = "";
     if (st[ST_BLOCKED]) snprintf(l1, sizeof(l1), "%d needs you", st[ST_BLOCKED]);
@@ -563,7 +673,7 @@ static void draw_overview(void) {
       }
       char more[32];
       snprintf(more, sizeof(more), "%s%s%d %s", l2, l2[0] ? " \xB7 " : "", vals[k], words[k]);
-      if (gfx_width(&vt14, more, 0) <= 92) strlcpy(l2, more, sizeof(l2));
+      if (gfx_width(&vt14, more, 0) <= iw) strlcpy(l2, more, sizeof(l2));
       else hidden += vals[k];
     }
     if (hidden) {
@@ -571,47 +681,61 @@ static void draw_overview(void) {
       snprintf(l2 + len, sizeof(l2) - len, " +%d", hidden);
     }
     if (!l1[0]) strlcpy(l1, "no sessions", sizeof(l1));
-    gfx_clip(cx + 10, cy + 70, 92, 46);
-    gfx_text(&vt14, cx + 10, cy + (l2[0] ? 78 : 91), loud ? ORANGE : WHITE, l1);
-    gfx_text(&vt14, cx + 10, cy + 98, MUTED2, l2);
+    if (roomy) {
+      gfx_clip(cx + 10, cy + 70, iw, 46);
+      gfx_text(&vt14, cx + 10, cy + (l2[0] ? 78 : 91), loud ? ORANGE : WHITE, l1);
+      gfx_text(&vt14, cx + 10, cy + 98, MUTED2, l2);
+    } else {
+      gfx_clip(cx + 10, cy + 52, iw, card_h - 54);
+      gfx_text(&vt14, cx + 10, cy + 54, loud ? ORANGE : WHITE, l1);
+      if (card_h >= 84) gfx_text(&vt14, cx + 10, cy + 68, MUTED2, l2);
+    }
     gfx_noclip();
     if (need) {
-      gfx_fill(cx + 112 - 22, cy + 8, 14, 14, ORANGE);
+      int bx = i % 2 ? SCR_W - gfx_inset(cy + 8, 14, SCR_W - cx - card_w + 8) - 14 : cx + card_w - 22;
+      gfx_fill(bx, cy + 8, 14, 14, ORANGE);
       char b[4];
       snprintf(b, sizeof(b), "%d", need > 9 ? 9 : need);
-      gfx_center(&vt14, cx + 112 - 22, 14, cy + 8, BLACK, b, 0);
+      gfx_center(&vt14, bx, 14, cy + 8, BLACK, b, 0);
     }
-    hit(cx, cy, 112, 118, A_CARD, i + 1);
+    hit(cx, cy, card_w, card_h, A_CARD, i + 1);
   }
 
   int asks = count_state(ST_BLOCKED), errs = count_state(ST_ERROR);
+  int bl = gfx_inset(bar_y, 46, 6), br = SCR_W - bl, bw = br - bl;
   if (asks + errs) {
-    gfx_box(6, 268, 228, 46, ORANGE, NULL, BLACK);
+    gfx_box(bl, bar_y, bw, 46, ORANGE, NULL, BLACK);
     char a[24], b[40] = "";
     snprintf(a, sizeof(a), "Needs you \xB7 %d", asks + errs);
-    gfx_caps(&sk9, 16, 277, BLACK, a, 0);
+    gfx_caps(&sk9, bl + 10, bar_y + 9, BLACK, a, 0);
     if (asks) snprintf(b, sizeof(b), "%d approval%s", asks, asks == 1 ? "" : "s");
     if (errs) {
       size_t len = strlen(b);
       snprintf(b + len, sizeof(b) - len, "%s%d error%s", len ? " \xB7 " : "", errs, errs == 1 ? "" : "s");
     }
-    gfx_text(&vt14, 16, 290, BLACK, b);
     int nw = gfx_caps_width(&sk9, "Next", 0);
-    gfx_caps(&sk9, 204 - nw, 287, BLACK, "Next", 0);
-    gfx_icon(I_RIGHT, 214, 286, 2, BLACK);
-    hit(6, 268, 228, 46, A_NEXT, 0);
+    // narrowed for rounded corners, the arrow says "next" on its own rather than cut the words short
+    bool word = bl == 6 || gfx_width(&vt14, b, 0) <= br - 30 - nw - 6 - bl - 10;
+    if (!word) nw = -6;
+    gfx_clip(bl + 10, bar_y, br - 30 - nw - 6 - bl - 10, 46);
+    gfx_text(&vt14, bl + 10, bar_y + 22, BLACK, b);
+    gfx_noclip();
+    if (word) gfx_caps(&sk9, br - 30 - nw, bar_y + 19, BLACK, "Next", 0);
+    gfx_icon(I_RIGHT, br - 20, bar_y + 18, 2, BLACK);
+    hit(bl, bar_y, bw, 46, A_NEXT, 0);
   } else {
-    gfx_box(6, 268, 228, 46, TILE, &c_line, BLACK);
-    gfx_caps(&sk9, 18, 277, MUTED, "All clear", 0);
-    gfx_text(&vt14, 18, 290, MUTED, "nothing needs you");
+    gfx_box(bl, bar_y, bw, 46, TILE, &c_line, BLACK);
+    gfx_caps(&sk9, bl + 12, bar_y + 9, MUTED, "All clear", 0);
     // the way to the pet when agents are busy and the clock can't appear
     int nw = gfx_caps_width(&sk9, model.pet_name, 0);
-    gfx_caps(&sk9, 204 - nw, 277, WHITE, model.pet_name, 0);
-    gfx_icon(I_RIGHT, 214, 283, 2, WHITE);
+    if (bl + 12 + gfx_width(&vt14, "nothing needs you", 0) + 8 <= br - 30 - gfx_width(&vt14, "asleep", 0))
+      gfx_text(&vt14, bl + 12, bar_y + 22, MUTED, "nothing needs you");
+    gfx_caps(&sk9, br - 30 - nw, bar_y + 9, WHITE, model.pet_name, 0);
+    gfx_icon(I_RIGHT, br - 20, bar_y + 15, 2, WHITE);
     char lv[12];
     snprintf(lv, sizeof(lv), "LV %d", pet_level(model.pet_grown));
-    gfx_right(&vt14, 204, 290, FAINT, model.pet_asleep && !count_state(ST_WORKING) ? "asleep" : lv);
-    hit(6, 268, 228, 46, A_PET_OPEN, 0);
+    gfx_right(&vt14, br - 30, bar_y + 22, FAINT, model.pet_asleep && !count_state(ST_WORKING) ? "asleep" : lv);
+    hit(bl, bar_y, bw, 46, A_PET_OPEN, 0);
   }
 }
 
@@ -624,21 +748,21 @@ static int queue_hero_takes(const int *list, int n) {
 }
 
 static void draw_queue(void) {
-  gfx_icon(I_GRID, 7, 5, 2, WHITE);
-  hit(0, 0, 44, 22, A_OVERVIEW, 0);
+  gfx_icon(I_GRID, HL + 1, 5, 2, WHITE);
+  hit(0, 0, HL + 38, 22, A_OVERVIEW, 0);
   struct tm t;
   clock_parts(&t);
   char hm[8];
   snprintf(hm, sizeof(hm), "%02d:%02d", t.tm_hour, t.tm_min);
-  gfx_text(&vt16, 30, 2, WHITE, hm);
+  gfx_text(&vt16, HL + 24, 2, WHITE, hm);
   int mac_w = gfx_width(&vt16, "MAC", 0);
-  mac_indicator(234, GREEN, MUTED);
+  mac_indicator(HR, GREEN, MUTED);
   int need = need_total();
   if (need) {
     char b[6];
     snprintf(b, sizeof(b), "!%d", need);
     int bw = gfx_width(&vt16, b, 0) + 8;
-    int bx = 234 - mac_w - 10 - 6 - bw;
+    int bx = HR - mac_w - 10 - 6 - bw;
     gfx_box(bx, 3, bw, 14, ORANGE, NULL, BLACK);
     gfx_text(&vt16, bx + 4, 2, BLACK, b);
   }
@@ -652,7 +776,7 @@ static void draw_queue(void) {
       if (needs_you(&model.s[list[k]])) nneed++;
       if (model.s[list[k]].state == ST_DONE) has_done = true;
     }
-    int x0 = 6 + i * (228 + 3) / 5, x1 = 6 + (i + 1) * (228 + 3) / 5 - 3, w = x1 - x0;
+    int x0 = 6 + i * (CW + 3) / 5, x1 = 6 + (i + 1) * (CW + 3) / 5 - 3, w = x1 - x0;
     bool on = i == tab;
     gfx_fill(x0, 22, w, 30, on ? CARD : TILE);
     if (on) gfx_fill(x0, 50, w, 2, ORANGE);
@@ -661,7 +785,9 @@ static void draw_queue(void) {
     char c[6];
     snprintf(c, sizeof(c), "%d", n);
     gfx_center(&vt14, x0, w, 36, on ? WHITE : FAINT, c, 0);
-    if (nneed) {
+    if (nneed && w < 40) {  // no room for a number beside the name
+      gfx_fill(x0 + w - 8, 25, 5, 5, ORANGE);
+    } else if (nneed) {
       char b[4];
       snprintf(b, sizeof(b), "%d", nneed > 9 ? 9 : nneed);
       gfx_fill(x0 + w - 12, 24, 10, 10, ORANGE);
@@ -718,11 +844,11 @@ static void draw_queue(void) {
     border = LINE;
     sprite = S_SLEEP;
   }
-  gfx_box(6, 56, 228, 56, CARD, &border, BLACK);
+  gfx_box(6, 56, CW, 56, CARD, &border, BLACK);
   gfx_fill(14, 63, 42, 42, BLACK);
   if (top && top->state > ST_DONE && w) pet_worker(now_ms(), 19, 70, 2, 0);
   else gfx_sprite(sprite, 15, 64, 3, 1, DOT_OFF, ORANGE, WHITE, GREEN);
-  gfx_clip(64, 58, 156, 52);
+  gfx_clip(64, 58, CW - 72, 52);
   gfx_caps(&sk9, 64, 60, MUTED2, label, 0);
   int rx = gfx_text(&ps16, 64, 73, wc, word);
   gfx_text(&vt14, rx + 6, 73 + ps16.base - vt14.base, MUTED, suffix);
@@ -730,18 +856,18 @@ static void draw_queue(void) {
   gfx_noclip();
   int taken = queue_hero_takes(list, n);
   if (taken) {
-    gfx_icon(I_RIGHT, 221, 81, 1, WHITE);
-    hit(6, 56, 228, 56, act, (int)(top - model.s));
+    gfx_icon(I_RIGHT, SCR_W - 19, 81, 1, WHITE);
+    hit(6, 56, CW, 56, act, (int)(top - model.s));
   }
 
   // rows
-  int below = n - taken;  // the rows under the hero
-  if (queue_top >= below) queue_top = below > 5 ? (below - 1) / 5 * 5 : 0;
-  int rows = below - queue_top > 5 ? 5 : below - queue_top;
+  int below = n - taken, page = queue_page();  // the rows under the hero
+  if (queue_top >= below) queue_top = below > page ? (below - 1) / page * page : 0;
+  int rows = below - queue_top > page ? page : below - queue_top;
   for (int i = 0; i < rows; i++) {
     const session_t *s = &model.s[list[i + taken + queue_top]];
     int y = 116 + i * 37;
-    gfx_box(6, y, 228, 34, TILE, s->state == ST_BLOCKED ? &c_orange : &c_line, BLACK);
+    gfx_box(6, y, CW, 34, TILE, s->state == ST_BLOCKED ? &c_orange : &c_line, BLACK);
     color_t ibg, ibd, ifg;
     const uint8_t *icon;
     switch (s->state) {
@@ -751,45 +877,50 @@ static void draw_queue(void) {
       case ST_WORKING: ibg = ibd = TILE; ifg = TILE; icon = I_DASH; break;  // the mascot, below
       default: ibg = TILE; ibd = LINE; ifg = FAINT; icon = I_DASH; break;
     }
-    gfx_box(14, y + 9, 16, 16, ibg, &ibd, TILE);
-    gfx_icon(icon, 17, y + 12, 2, ifg);
-    if (s->state == ST_WORKING) pet_worker(now_ms(), 14, y + 10, 1, i);
+    int ri = gfx_inset(y + 2, 30, 14) - 14;  // further in, low on a screen whose corners are very round
+    gfx_box(14 + ri, y + 9, 16, 16, ibg, &ibd, TILE);
+    gfx_icon(icon, 17 + ri, y + 12, 2, ifg);
+    if (s->state == ST_WORKING) pet_worker(now_ms(), 14 + ri, y + 10, 1, i);
     char age[8];
     fmt_age(age, sizeof(age), age_of(s));
-    int aw = gfx_width(&vt14, age, 0);
-    int col_r = tab == 0 ? 199 : 226;
+    int aw = gfx_width(&vt14, age, 0), tx = 37 + ri;
+    int col_r = (tab == 0 ? SCR_W - 41 : SCR_W - 14) - ri;
     gfx_right(&vt14, col_r, y + 2 + px13.base - vt14.base, MUTED, age);
-    gfx_clip(37, y + 2, col_r - aw - 5 - 37, 15);
-    gfx_text(&px13, 37, y + 2, WHITE, s->project);
-    gfx_clip(37, y + 16, col_r - 37, 16);
-    int dx = s->host[0] ? gfx_text(&vt14, 37, y + 18, WHITE, s->host) + 5 : 37;
+    gfx_clip(tx, y + 2, col_r - aw - 5 - tx, 15);
+    gfx_text(&px13, tx, y + 2, WHITE, s->project);
+    gfx_clip(tx, y + 16, col_r - tx, 16);
+    int dx = s->host[0] ? gfx_text(&vt14, tx, y + 18, WHITE, s->host) + 5 : tx;
     gfx_text(&vt14, dx, y + 18, MUTED, s->detail);
     gfx_noclip();
-    if (tab == 0) gfx_right(&sk9, 226, y + 12, MUTED2, s->agent);
-    hit(6, y, 228, 34, A_SESSION, list[i + taken + queue_top]);
+    if (tab == 0) gfx_right(&sk9, SCR_W - 14 - ri, y + 12, MUTED2, s->agent);
+    hit(6, y, CW, 34, A_SESSION, list[i + taken + queue_top]);
   }
 
   char foot[24];
-  if (below > 5) snprintf(foot, sizeof(foot), "%d-%d of %d", queue_top + taken + 1, queue_top + taken + rows, n);
+  if (below > page) snprintf(foot, sizeof(foot), "%d-%d of %d", queue_top + taken + 1, queue_top + taken + rows, n);
   else snprintf(foot, sizeof(foot), "%d session%s", n, n == 1 ? "" : "s");
-  gfx_text(&vt14, 6, 302, MUTED, foot);
-  gfx_right(&vt14, 234, 302, MUTED,
-            queue_top + rows < below ? "swipe up for more" : queue_top ? "swipe down: back" : "swipe < > agents");
+  int fl = gfx_inset(SCR_H - 18, 14, 6), fw = SCR_W - 2 * fl;
+  gfx_text(&vt14, fl, SCR_H - 18, MUTED, foot);
+  const char *how = queue_top + rows < below ? "swipe up for more" : queue_top ? "swipe down: back" : "swipe < > agents";
+  if (gfx_width(&vt14, foot, 0) + 8 + gfx_width(&vt14, how, 0) > fw)
+    how = queue_top + rows < below ? "more: swipe up" : queue_top ? "back: swipe" : "< > agents";
+  if (gfx_width(&vt14, foot, 0) + 8 + gfx_width(&vt14, how, 0) <= fw) gfx_right(&vt14, SCR_W - fl, SCR_H - 18, MUTED, how);
 
   // A4: attention from an agent on another tab
   const session_t *al = alert_id[0] && now_ms() < alert_until ? find_session(alert_id) : NULL;
   if (al && al->state == ST_BLOCKED) {
     gfx_border(0, 0, SCR_W, SCR_H, ORANGE);
-    gfx_box(6, 22, 228, 30, ORANGE, NULL, BLACK);
-    gfx_icon(I_BANG, 14, 32, 2, BLACK);
+    gfx_box(6, 22, CW, 30, ORANGE, NULL, BLACK);
+    int ax = gfx_inset(30, 12, 14);  // further in where a rounded corner reaches
+    gfx_icon(I_BANG, ax, 32, 2, BLACK);
     char txt[44];
     snprintf(txt, sizeof(txt), "%s \xB7 %s needs you", al->agent, al->project);
     int vw = gfx_caps_width(&sk9, "View >", 0);
-    gfx_clip(32, 22, 226 - vw - 8 - 32, 30);
-    gfx_caps(&sk9, 32, 32, BLACK, txt, 0);
+    gfx_clip(ax + 18, 22, SCR_W - ax - vw - 8 - ax - 18, 30);
+    gfx_caps(&sk9, ax + 18, 32, BLACK, txt, 0);
     gfx_noclip();
-    gfx_caps(&sk9, 226 - vw, 32, BLACK, "View >", 0);
-    hit(6, 20, 228, 34, A_ALERT, 0);
+    gfx_caps(&sk9, SCR_W - ax - vw, 32, BLACK, "View >", 0);
+    hit(6, 20, CW, 34, A_ALERT, 0);
     // the banner covers the tabs: it wins the hit test
     hit_t top_hit = hits[hit_n - 1];
     memmove(&hits[1], &hits[0], sizeof(hit_t) * (hit_n - 1));
@@ -808,75 +939,79 @@ static void draw_ask(const session_t *s) {
         k++;
         if (&model.s[r] == s) pos = k;
       }
-    int x = gfx_caps(&sk9, 6, 5, WHITE, "Approval", 0) + 8;
-    int shown = asks > 6 ? 6 : asks;
-    for (int i = 0; i < shown; i++) gfx_fill(x + i * 11, 8, 8, 3, i == (pos - 1) % 6 ? ORANGE : FAINT);
+    int x = gfx_caps(&sk9, HL, 5, WHITE, "Approval", 0) + 8;
     char of[16];
     snprintf(of, sizeof(of), "%d of %d", pos, asks);
+    int room = (HR - x - 5 - gfx_width(&vt16, of, 0)) / 11;  // one mark for each ask, as many as fit
+    int most = room < 6 ? (room < 1 ? 1 : room) : 6;
+    int shown = asks > most ? most : asks;
+    for (int i = 0; i < shown; i++) gfx_fill(x + i * 11, 8, 8, 3, i == (pos - 1) % most ? ORANGE : FAINT);
     gfx_text(&vt16, x + shown * 11 + 5, 2, MUTED, of);
   } else {
-    gfx_caps(&sk9, 6, 5, WHITE, "Needs you", 0);
+    gfx_caps(&sk9, HL, 5, WHITE, "Needs you", 0);
     char w[20], a[8];
     fmt_age(a, sizeof(a), age_of(s));
     snprintf(w, sizeof(w), "waiting %s", a);
-    gfx_right(&vt16, 234, 2, MUTED, w);
+    gfx_right(&vt16, HR, 2, MUTED, w);
   }
 
-  gfx_box(6, 24, 228, 196, CARD, NULL, BLACK);
+  ask_frame_t f = ask_frame();
+  pair_t b = button_pair(f.btn_y, f.btn_h);
+  int hint_room = SCR_W - 2 * gfx_inset(f.hint_y, 16, 6);
+  gfx_box(6, 24, CW, f.card_b - 24, CARD, NULL, BLACK);
   card_label(s, WHITE);
-  gfx_text(&vt16, 16, 52, MUTED2, s->verb);
-  gfx_text(&ps32, 14, 70, ORANGE, s->tool[0] ? s->tool : "ASK");
+  ask_header(s, s->verb, MUTED2, ORANGE);
   bool sh = !strcmp(s->tool, "BASH") || !strcmp(s->tool, "SHELL");
 
   if (approve) {
-    ask_clipped = code_body(s, 14, 112, 212, 100, CODE, GREEN, sh);
+    ask_clipped = code_body(s, 14, f.code_y, CW - 16, f.card_b - 8 - f.code_y, CODE, GREEN, sh);
     bool busy = answering;
-    button(6, 226, 111, 64, TILE, &c_line, I_CROSS, 3, busy ? FAINT : ORANGE, 10, &sk11, busy ? FAINT : WHITE, "Deny", 2);
+    button(b.x0, f.btn_y, b.w, f.btn_h, TILE, &c_line, I_CROSS, 3, busy ? FAINT : ORANGE, 10, &sk11, busy ? FAINT : WHITE, "Deny", 2);
     if (model.no_approve) {  // Deny still works here. To say yes, it has to be on the Mac
-      button(123, 226, 111, 64, TILE, &c_line, NULL, 0, 0, 0, &sk11, busy ? FAINT : WHITE, "On Mac", 2);
+      button(b.x1, f.btn_y, b.w, f.btn_h, TILE, &c_line, NULL, 0, 0, 0, &sk11, busy ? FAINT : WHITE, "On Mac", 2);
     } else {
-      button(123, 226, 111, 64, busy ? CARD : ORANGE, NULL, I_CHECK, 3, busy ? FAINT : BLACK, 10, &sk11, busy ? FAINT : BLACK,
-             busy ? "Sending" : "Allow", busy ? 0 : 2);
+      button(b.x1, f.btn_y, b.w, f.btn_h, busy ? CARD : ORANGE, NULL, I_CHECK, 3, busy ? FAINT : BLACK, 10, &sk11,
+             busy ? FAINT : BLACK, busy ? "Sending" : "Allow", busy ? 0 : 2);
     }
     if (!busy) {
-      hit(6, 226, 111, 64, A_DENY, 0);
-      hit(123, 226, 111, 64, model.no_approve ? A_ASK_MAC : A_ALLOW, 0);
+      hit(b.x0, f.btn_y, b.w, f.btn_h, A_DENY, 0);
+      hit(b.x1, f.btn_y, b.w, f.btn_h, model.no_approve ? A_ASK_MAC : A_ALLOW, 0);
     }
-    gfx_center(&vt16, 0, SCR_W, 298, ask_clipped ? ORANGE : FAINT,
-               s->file[0] ? "swipe up for full diff"
-                          : ask_clipped ? "swipe up for all of it"
-                          : model.no_approve ? "approve this one on your Mac" : "also waiting in the terminal", 0);
+    const char *hint = s->file[0] ? "swipe up for full diff"
+                       : ask_clipped ? "swipe up for all of it"
+                       : model.no_approve ? "approve this one on your Mac" : "also waiting in the terminal";
+    if (gfx_width(&vt16, hint, 0) > hint_room) hint = s->file[0] || ask_clipped ? "swipe up: all of it" : model.no_approve ? "approve it on the Mac" : "";
+    gfx_center(&vt16, 0, SCR_W, f.hint_y, ask_clipped ? ORANGE : FAINT, hint, 0);
   } else {
-    ask_clipped = code_body(s, 14, 112, 212, 62, CODE, sh ? GREEN : MUTED, sh);
-    gfx_dashed(14, 182, 212, 2, SPENT);
-    gfx_icon(I_BANG, 14, 193, 2, ORANGE);
-    gfx_clip(32, 184, 194, 34);
-    gfx_wrap(&vt16, 32, 185, 194, 16, MUTED2, s->note[0] ? s->note : "Answer this one in the terminal", 0, 0);
+    ask_clipped = code_body(s, 14, f.code_y, CW - 16, f.card_b - 46 - f.code_y, CODE, sh ? GREEN : MUTED, sh);
+    gfx_dashed(14, f.card_b - 38, CW - 16, 2, SPENT);
+    gfx_icon(I_BANG, 14, f.card_b - 27, 2, ORANGE);
+    gfx_clip(32, f.card_b - 36, CW - 34, 34);
+    gfx_wrap(&vt16, 32, f.card_b - 35, CW - 34, 16, MUTED2, s->note[0] ? s->note : "Answer this one in the terminal", 0, 0);
     gfx_noclip();
-    button(6, 226, 72, 64, TILE, &c_line, NULL, 0, 0, 0, &sk9, MUTED, "Later", 1);
-    open_button(84, 226, 150, 64, &sk11, 3);
-    hit(6, 226, 72, 64, A_LATER, 0);
-    if (s->host[0]) {
-      char via[32];
-      snprintf(via, sizeof(via), "opens it over ssh \xB7 %s", s->host);
-      gfx_center(&vt16, 0, SCR_W, 298, FAINT, via, 0);
-    } else {
-      gfx_center(&vt16, 0, SCR_W, 298, FAINT, "runs herdr focus \xB7 ghostty", 0);
-    }
+    int later_w = SCR_W >= 240 ? 72 : (CW - 6) / 3, both = SCR_W - 2 * b.x0;
+    button(b.x0, f.btn_y, later_w, f.btn_h, TILE, &c_line, NULL, 0, 0, 0, &sk9, MUTED, "Later", 1);
+    open_button(b.x0 + later_w + 6, f.btn_y, both - 6 - later_w, f.btn_h, &sk11, 3);
+    hit(b.x0, f.btn_y, later_w, f.btn_h, A_LATER, 0);
+    char via[32];
+    if (s->host[0]) snprintf(via, sizeof(via), "opens it over ssh \xB7 %s", s->host);
+    else strlcpy(via, "runs herdr focus \xB7 ghostty", sizeof(via));
+    if (gfx_width(&vt16, via, 0) <= hint_room) gfx_center(&vt16, 0, SCR_W, f.hint_y, FAINT, via, 0);
   }
 }
 
 // Everything the code box couldn't show, reached by swiping up on an ask. Not a
 // separate design board: the same code box, using the whole screen.
 static void draw_full(const session_t *s) {
-  gfx_icon(I_LEFT, 6, 8, 1, WHITE);
-  gfx_caps(&sk9, 15, 5, WHITE, "Back", 0);
-  hit(0, 0, 60, 22, A_LATER, 1);
-  gfx_box(6, 24, 228, 290, CODE, NULL, BLACK);
-  gfx_clip(6, 26, 228, 286);
-  int y = 30 - diff_scroll * 18;
+  gfx_icon(I_LEFT, HL, 8, 1, WHITE);
+  gfx_caps(&sk9, HL + 9, 5, WHITE, "Back", 0);
+  hit(0, 0, HL + 54, 22, A_LATER, 1);
+  gfx_box(6, 24, CW, SCR_H - 30, CODE, NULL, BLACK);
+  int text_b = gfx_bottom(14) < SCR_H - 8 ? gfx_bottom(14) : SCR_H - 8;  // the lines start 14 in
+  gfx_clip(6, 26, CW, text_b - 26);
+  int tx = gfx_inset(30, 18, 14), y = 30 - diff_scroll * 18, tw = SCR_W - 2 * tx;
   if (s->file[0]) {
-    y += 18 * gfx_wrap(&vt18, 14, y, 212, 18, WHITE, s->file, 0, 0);
+    y += 18 * gfx_wrap(&vt18, tx, y, tw, 18, WHITE, s->file, 0, 0);
     const char *p = BODY_OF(s);
     static char row[BODY_MAX];
     while (*p) {
@@ -886,14 +1021,14 @@ static void draw_full(const session_t *s) {
       memcpy(row, p, len);
       row[len] = 0;
       color_t c = row[0] == '-' ? ORANGE : row[0] == '+' ? GREEN : MUTED;
-      y += 18 * gfx_wrap(&vt18, 14, y, 212, 18, c, row, 0, 0);
+      y += 18 * gfx_wrap(&vt18, tx, y, tw, 18, c, row, 0, 0);
       p = e ? e + 1 : "";
     }
   } else {
     bool sh = !strcmp(s->tool, "BASH") || !strcmp(s->tool, "SHELL");
     static char text[BODY_MAX + 4];
     snprintf(text, sizeof(text), "%s%s", sh ? "$ " : "", BODY_OF(s));
-    gfx_wrap(&vt18, 14, y, 212, 18, sh ? GREEN : MUTED, text, sh ? 1 : 0, MUTED);
+    gfx_wrap(&vt18, tx, y, tw, 18, sh ? GREEN : MUTED, text, sh ? 1 : 0, MUTED);
   }
   gfx_noclip();
 }
@@ -904,37 +1039,40 @@ static const question_t *current_question(const session_t *s) { return &model.q[
 
 static void draw_choice(const session_t *s) {
   const question_t *q = current_question(s);
-  gfx_icon(I_LEFT, 6, 8, 1, WHITE);
-  gfx_caps(&sk9, 15, 5, WHITE, q_index ? "Back" : "Later", 0);
-  hit(0, 0, 60, 22, q_index ? A_CHOICE_BACK : A_LATER, 0);
+  gfx_icon(I_LEFT, HL, 8, 1, WHITE);
+  gfx_caps(&sk9, HL + 9, 5, WHITE, q_index ? "Back" : "Later", 0);
+  hit(0, 0, HL + 54, 22, q_index ? A_CHOICE_BACK : A_LATER, 0);
   if (s->q_n > 1) {
     char of[20];
     snprintf(of, sizeof(of), "question %d of %d", q_index + 1, s->q_n);
-    gfx_right(&vt16, 234, 2, MUTED, of);
+    gfx_right(&vt16, HR, 2, MUTED, of);
   } else {
     char w[20], a[8];
     fmt_age(a, sizeof(a), age_of(s));
     snprintf(w, sizeof(w), "waiting %s", a);
-    gfx_right(&vt16, 234, 2, MUTED, w);
+    gfx_right(&vt16, HR, 2, MUTED, w);
   }
 
-  gfx_box(6, 24, 228, 74, CARD, NULL, BLACK);
+  bool t = tight();
+  int max_lines = t ? 2 : 3, head_h = 26 + 16 * max_lines;
+  gfx_box(6, 24, CW, head_h, CARD, NULL, BLACK);
   card_label(s, WHITE);
-  gfx_clip(16, 48, 208, 48);
-  int lines = gfx_wrap(&vt16, 16, 49, 208, 16, WHITE, &model.text[q->text], 0, 0);
+  gfx_clip(16, 48, CW - 20, 16 * max_lines);
+  int lines = gfx_wrap(&vt16, 16, 49, CW - 20, 16, WHITE, &model.text[q->text], 0, 0);
   gfx_noclip();
-  if (lines > 3) {  // never let a clipped question look complete
-    gfx_fill(202, 80, 26, 16, CARD);
-    gfx_right(&vt18, 226, 78, ORANGE, "...");
+  if (lines > max_lines) {  // never let a clipped question look complete
+    gfx_fill(SCR_W - 38, 32 + 16 * max_lines, 26, 16, CARD);
+    gfx_right(&vt18, SCR_W - 14, 30 + 16 * max_lines, ORANGE, "...");
   }
 
-  int rows = q->options + 1;
-  int step = 172 / rows > 44 ? 44 : 172 / rows;
+  int btn_h = t ? 34 : 40, btn_y = SCR_H - btn_h - 4, top = 24 + head_h + 4;
+  int rows = q->options + 1, area = btn_y - top - 2;
+  int step = area / rows > 44 ? 44 : area / rows;
   for (int i = 0; i < rows; i++) {
-    int y = 102 + i * step, h = step - 3;
+    int y = top + i * step, h = step - 3;
     bool typed_row = i == q->options;
     bool on = q_picks[q_index] & (1 << (typed_row ? OPTION_MAX : i));
-    gfx_box(6, y, 228, h, on ? CARD : TILE, on ? &c_orange : &c_line, BLACK);
+    gfx_box(6, y, CW, h, on ? CARD : TILE, on ? &c_orange : &c_line, BLACK);
     int by = y + (h - 12) / 2;
     if (on) gfx_fill(14, by, 12, 12, ORANGE);
     else gfx_border(14, by, 12, 12, q->multi ? MUTED : FAINT);
@@ -943,7 +1081,7 @@ static void draw_choice(const session_t *s) {
                                   : &model.text[q->label[i]];
     const char *desc = typed_row ? "" : &model.text[q->desc[i]];
     color_t lc = typed_row && !q_typed[q_index][0] ? MUTED : WHITE;
-    gfx_clip(32, y + 1, 198, h - 2);
+    gfx_clip(32, y + 1, CW - 30, h - 2);
     if (desc[0] && h >= 30) {
       gfx_text(&vt16, 32, y + (h - 30) / 2, lc, label);
       gfx_text(&vt14, 32, y + (h - 30) / 2 + 15, MUTED, desc);
@@ -951,15 +1089,16 @@ static void draw_choice(const session_t *s) {
       gfx_text(&vt16, 32, y + (h - 15) / 2, lc, label);
     }
     gfx_noclip();
-    hit(6, y, 228, h, A_OPTION, i);
+    hit(6, y, CW, h, A_OPTION, i);
   }
 
-  open_button(6, 276, 111, 40, &sk9, 1);
+  pair_t b = button_pair(btn_y, btn_h);
+  open_button(b.x0, btn_y, b.w, btn_h, &sk9, 1);
   bool last = q_index + 1 >= s->q_n, ready = q_picks[q_index] != 0;
   bool enabled = ready && !answering;
-  button(123, 276, 111, 40, enabled ? ORANGE : TILE, enabled ? NULL : &c_line, last ? I_CHECK : I_RIGHT, 1, enabled ? BLACK : FAINT, 8,
+  button(b.x1, btn_y, b.w, btn_h, enabled ? ORANGE : TILE, enabled ? NULL : &c_line, last ? I_CHECK : I_RIGHT, 1, enabled ? BLACK : FAINT, 8,
          &sk9, enabled ? BLACK : FAINT, answering ? "Sending" : last ? "Send" : "Next", 1);
-  if (enabled) hit(123, 276, 111, 40, A_CHOICE_NEXT, 0);
+  if (enabled) hit(b.x1, btn_y, b.w, btn_h, A_CHOICE_NEXT, 0);
 }
 
 static void pick_option(const session_t *s, int i) {
@@ -1006,36 +1145,44 @@ static void draw_detail(const session_t *s) {
   int list[MAX_SESSIONS], n = tab_list(0, list), pos = 1;
   for (int i = 0; i < n; i++)
     if (&model.s[list[i]] == s) pos = i + 1;
-  gfx_icon(I_LEFT, 6, 8, 1, WHITE);
-  gfx_caps(&sk9, 15, 5, WHITE, "Queue", 0);
-  hit(0, 0, 60, 22, A_QUEUE, 0);
+  gfx_icon(I_LEFT, HL, 8, 1, WHITE);
+  gfx_caps(&sk9, HL + 9, 5, WHITE, "Queue", 0);
+  hit(0, 0, HL + 54, 22, A_QUEUE, 0);
   char of[12];
   snprintf(of, sizeof(of), "%d / %d", pos, n);
-  gfx_right(&vt16, 234, 2, MUTED, of);
+  gfx_right(&vt16, HR, 2, MUTED, of);
 
-  gfx_box(6, 24, 228, 72, CARD, NULL, BLACK);
-  int tw = gfx_caps_width(&sk9, s->agent, 0);
-  gfx_fill(16, 36, tw + 8, 13, CODE);
-  gfx_caps(&sk9, 20, 38, WHITE, s->agent, 0);
+  bool t = tight();
+  int card_h = t ? 56 : 72, r1 = t ? 30 : 34, r2 = t ? 50 : 58;
+  gfx_box(6, 24, CW, card_h, CARD, NULL, BLACK);
+  int tw = gfx_caps_width(&sk9, s->agent, 0), dl = gfx_inset(r1, 16, 16);
+  gfx_fill(dl, r1 + 2, tw + 8, 13, CODE);
+  gfx_caps(&sk9, dl + 4, r1 + 4, WHITE, s->agent, 0);
   uint32_t a = age_of(s);
   char dur[16];
   if (a < 60) snprintf(dur, sizeof(dur), "%us", (unsigned)a);
   else if (a < 3600) snprintf(dur, sizeof(dur), "%um %us", (unsigned)(a / 60), (unsigned)(a % 60));
   else snprintf(dur, sizeof(dur), "%uh %um", (unsigned)(a / 3600), (unsigned)(a % 3600 / 60));
   int dw = gfx_width(&vt16, dur, 0);
-  gfx_right(&vt16, 224, 34, MUTED2, dur);
-  gfx_clip(16 + tw + 14, 30, 224 - dw - 4 - 16 - tw - 14, 20);
-  gfx_text(&px16, 16 + tw + 14, 34, WHITE, s->project);
+  gfx_right(&vt16, SCR_W - dl, r1, MUTED2, dur);
+  gfx_clip(dl + tw + 14, r1 - 4, SCR_W - dl - dw - 4 - dl - tw - 14, 20);
+  gfx_text(&px16, dl + tw + 14, r1, WHITE, s->project);
   gfx_noclip();
   static const char *const words[] = {"BLOCKED", "ERROR", "DONE", "WORKING", "IDLE"};
   color_t wc = s->state == ST_DONE ? GREEN : s->state == ST_IDLE ? WHITE : ORANGE;
-  int word_end = gfx_text(&ps16, 16, 58, wc, words[s->state]);
-  if (s->host[0]) gfx_text(&vt16, word_end + 8, 60, MUTED2, s->host);
-  if (s->state == ST_WORKING) pet_worker(now_ms(), 192, 58, 2, 0);
+  bool worker = s->state == ST_WORKING && 16 + gfx_width(&ps16, words[s->state], 0) + 8 <= SCR_W - 52;
+  gfx_clip(16, r2, (worker ? SCR_W - 52 : RX - 4) - 16, 24);
+  int word_end = gfx_text(&ps16, 16, r2, wc, words[s->state]);
+  if (s->host[0]) gfx_text(&vt16, word_end + 8, r2 + 2, MUTED2, s->host);
+  gfx_noclip();
+  if (worker) pet_worker(now_ms(), SCR_W - 48, r2, 2, 0);
 
-  gfx_box(6, 102, 228, 146, TILE, &c_line, BLACK);
-  gfx_caps(&sk9, 18, 112, MUTED, "Recent", 0);
+  int btn_h = t ? 40 : 60, btn_y = SCR_H - btn_h - 6, ry = 24 + card_h + 6, rh = btn_y - 6 - ry;
+  gfx_box(6, ry, CW, rh, TILE, &c_line, BLACK);
+  gfx_caps(&sk9, 18, ry + 10, MUTED, "Recent", 0);
   int shown = !strcmp(model.hist_id, s->id) ? model.hist_n : 0;
+  int fits = (rh - 30) / 23;
+  if (shown > fits) shown = fits;
   // A new event moves every row down: start them all from the top rather than mid-word.
   static char newest[sizeof(model.hist[0].text)];
   const char *top = shown ? model.hist[0].text : s->detail;
@@ -1045,28 +1192,30 @@ static void draw_detail(const session_t *s) {
   }
   for (int i = 0; i < shown; i++) {
     const hist_item_t *h = &model.hist[i];
-    int y = 128 + i * 23;
+    int y = ry + 26 + i * 23;
     gfx_text(&vt16, 18, y, FAINT, h->age);
     color_t tone = h->tone == 1 ? ORANGE : h->tone == 2 ? GREEN : FAINT;
     gfx_fill(52, y + 4, 6, 6, tone);
-    marquee(&vt16, 66, y, 160, i == 0 ? WHITE : MUTED, h->text);
+    marquee(&vt16, 66, y, SCR_W - 80, i == 0 ? WHITE : MUTED, h->text);
   }
-  if (!shown) marquee(&vt16, 18, 128, 208, FAINT, s->detail);
+  if (!shown) marquee(&vt16, 18, ry + 26, CW - 20, FAINT, s->detail);
 
-  button(6, 254, 111, 60, TILE, &c_line, I_DASH, 2, MUTED, 8, &sk9, WHITE, sound_muted() ? "Unmute" : "Mute chime", 1);
-  open_button(123, 254, 111, 60, &sk9, 2);
-  hit(6, 254, 111, 60, A_MUTE, 0);
+  pair_t b = button_pair(btn_y, btn_h);
+  button(b.x0, btn_y, b.w, btn_h, TILE, &c_line, I_DASH, 2, MUTED, 8, &sk9, WHITE, sound_muted() ? "Unmute" : "Mute chime", 1);
+  open_button(b.x1, btn_y, b.w, btn_h, &sk9, 2);
+  hit(b.x0, btn_y, b.w, btn_h, A_MUTE, 0);
 }
 
 // ---------------------------------------------------------------- 10 Link lost
 
 static void draw_lost(const session_t *s) {
-  gfx_caps(&sk9, 6, 5, WHITE, "Approval", 0);
+  gfx_caps(&sk9, HL, 5, WHITE, "Approval", 0);
   int w = gfx_width(&vt16, "MAC", 0);
-  gfx_text(&vt16, 234 - w, 2, ORANGE, "MAC");
-  gfx_icon(I_CROSS, 234 - w - 9, 8, 1, ORANGE);
+  gfx_text(&vt16, HR - w, 2, ORANGE, "MAC");
+  gfx_icon(I_CROSS, HR - w - 9, 8, 1, ORANGE);
 
-  gfx_box(6, 24, 228, 196, SPENT, NULL, BLACK);
+  ask_frame_t f = ask_frame();
+  gfx_box(6, 24, CW, f.card_b - 24, SPENT, NULL, BLACK);
   card_label(s, MUTED2);
   char verb[24];
   strlcpy(verb, s->verb, sizeof(verb));
@@ -1074,28 +1223,29 @@ static void draw_lost(const session_t *s) {
     memmove(verb + 6, verb + 5, strlen(verb + 5) + 1);
     memcpy(verb, "wanted", 6);
   }
-  gfx_text(&vt16, 16, 52, MUTED2, verb);
-  gfx_text(&ps32, 14, 70, MUTED, s->tool[0] ? s->tool : "ASK");
-  gfx_box(14, 112, 212, 84, LINE, NULL, SPENT);
+  ask_header(s, verb, MUTED2, MUTED);
+  int code_h = f.card_b - 24 - f.code_y;
+  gfx_box(14, f.code_y, CW - 16, code_h, LINE, NULL, SPENT);
   static char text[BODY_MAX + 4];
   bool sh = !strcmp(s->tool, "BASH") || !strcmp(s->tool, "SHELL");
   snprintf(text, sizeof(text), "%s%s", sh ? "$ " : "", BODY_OF(s));
-  gfx_clip(14, 112, 212, 78);
-  gfx_wrap(&vt18, 22, 118, 196, 18, MUTED, text, 0, 0);
+  gfx_clip(14, f.code_y, CW - 16, code_h - 6);
+  gfx_wrap(&vt18, 22, f.code_y + 6, CW - 32, 18, MUTED, text, 0, 0);
   gfx_noclip();
 
-  gfx_box(0, 112, SCR_W, 40, ORANGE, NULL, BLACK);
-  gfx_center(&ps12, 0, SCR_W, 124, BLACK, "LINK LOST", 0);
+  gfx_box(0, f.code_y, SCR_W, 40, ORANGE, NULL, BLACK);
+  gfx_center(&ps12, 0, SCR_W, f.code_y + 12, BLACK, "LINK LOST", 0);
 
+  pair_t b = button_pair(f.btn_y, f.btn_h);
   for (int i = 0; i < 2; i++) {
-    int x = 6 + i * 117;
-    gfx_fill(x, 226, 111, 64, CODE);
-    gfx_dashed(x, 226, 111, 64, LINE);
-    gfx_corners(x, 226, 111, 64, BLACK);
+    int x = i ? b.x1 : b.x0;
+    gfx_fill(x, f.btn_y, b.w, f.btn_h, CODE);
+    gfx_dashed(x, f.btn_y, b.w, f.btn_h, LINE);
+    gfx_corners(x, f.btn_y, b.w, f.btn_h, BLACK);
     int tw = gfx_caps_width(&sk11, i ? "Allow" : "Deny", 2);
-    gfx_caps(&sk11, x + (111 - tw) / 2, 252, FAINT, i ? "Allow" : "Deny", 2);
+    gfx_caps(&sk11, x + (b.w - tw) / 2, f.btn_y + (f.btn_h - 12) / 2, FAINT, i ? "Allow" : "Deny", 2);
   }
-  gfx_center(&vt16, 0, SCR_W, 298, MUTED, "answer it in the terminal", 0);
+  gfx_center(&vt16, 0, SCR_W, f.hint_y, MUTED, "answer it in the terminal", 0);
 }
 
 // ---------------------------------------------------------------- input
@@ -1230,8 +1380,9 @@ static void on_swipe(char dir) {
     int list[MAX_SESSIONS];
     int count = tab_list(tab, list);
     int below = count - queue_hero_takes(list, count);
-    if (dir == 'U' && queue_top + 5 < below) queue_top += 5;
-    if (dir == 'D') queue_top = queue_top > 5 ? queue_top - 5 : 0;
+    int page = queue_page();
+    if (dir == 'U' && queue_top + page < below) queue_top += page;
+    if (dir == 'D') queue_top = queue_top > page ? queue_top - page : 0;
     screen_gen++;
   } else if (screen == SCR_DETAIL && dir == 'R') {
     go(SCR_QUEUE);
@@ -1360,6 +1511,7 @@ void ui_begin(void) {
   model_lock = xSemaphoreCreateMutex();
   events = xQueueCreate(8, sizeof(ui_event_t));
   last_touch_ms = now_ms();
+  pet_stage(SCR_W, pet_ground(), pet_dot());
   gfx_clear(BLACK);
   draw_boot();
   board_flush();
@@ -1393,6 +1545,12 @@ static void handle_goto(const char *name) {
   } else if (!strncmp(name, "detail:", 7)) {
     session_t *s = find_session(name + 7);
     if (s) open_detail(s);
+  } else if (!strcmp(name, "full") && (screen == SCR_ASK || screen == SCR_CHOICE)) {
+    diff_scroll = 0;
+    go(SCR_DIFF);
+  } else if (!strcmp(name, "keys") && screen == SCR_CHOICE) {
+    session_t *s = find_session(cur_id);
+    if (s) pick_option(s, current_question(s)->options);
   }
 }
 
@@ -1537,8 +1695,9 @@ void ui_tick(void) {
   }
   draw_pressed();
   if (now_ms() < toast_until) {
-    int ty = 296;
+    int ty = SCR_H - 24;
     gfx_fill(0, ty, SCR_W, 24, BLACK);
+    if (tight()) gfx_fill(0, ty, SCR_W, 2, ORANGE);  // short screens have no room kept for it: it goes over
     gfx_center(&vt16, 0, SCR_W, ty + 4, ORANGE, toast, 0);
   }
   xSemaphoreGive(model_lock);
