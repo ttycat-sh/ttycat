@@ -432,7 +432,7 @@ final class TTYCatModel: ObservableObject {
       boardEverSeen = true
       UserDefaults.standard.set(true, forKey: "boardEverSeen")
     }
-    firmwarePlan = FirmwarePlan.make(status: status, image: firmwareImage)
+    firmwarePlan = FirmwarePlan.make(status: status, image: bestFirmware.image)
     noticeBoardAsking()
 
     // An update takes a while: you may have closed the panel by the time it ends.
@@ -488,9 +488,22 @@ final class TTYCatModel: ObservableObject {
     show("\(board.label ?? board.fw ?? "It") can't approve yet. Setup > Firmware can change that.")
   }
 
+  /// The firmware to offer the official board, and where it is: see FirmwareImage.best.
+  var bestFirmware: (image: FirmwareImage?, folder: String?) {
+    FirmwareImage.best(carried: firmwareImage, carriedFolder: FirmwareImage.folder, status: status)
+  }
+
+  /// Whether the daemon asks ttycat's update server what's new: on start, then every hour.
+  func setUpdateCheck(_ on: Bool) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      _ = Ctl.request(["t": "updates", "check": on], timeout: 3)
+      DispatchQueue.main.async { MainActor.assumeIsolated { self.poll() } }
+    }
+  }
+
   /// `unknown`: you've agreed to overwrite a device that hasn't said what it is. `port`: which one.
   func updateFirmware(unknown: Bool = false, port: String? = nil) {
-    guard !flashBusy, let folder = FirmwareImage.folder else { return }
+    guard !flashBusy, let folder = bestFirmware.folder else { return }
     flashStarting = true
     DispatchQueue.global(qos: .userInitiated).async {
       // The image's hashes are checked first; that's quick.

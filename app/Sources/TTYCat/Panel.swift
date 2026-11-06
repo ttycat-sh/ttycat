@@ -480,6 +480,11 @@ private struct SetupPage: View {
         ) {
           m.setHook(m.hookInstalled != true)
         }
+        if let updates = m.status?.updates {
+          Toggled(title: "Check for updates", on: updates.check, detail: updatesDetail(updates)) {
+            m.setUpdateCheck(!updates.check)
+          }
+        }
       }
 
       Section(title: "Notifications") {
@@ -545,6 +550,13 @@ private struct SetupPage: View {
       m.refreshLogin()
       m.refreshPermission()
     }
+  }
+
+  /// What's sent stays short in the detail: the board's model and versions, never anything about you.
+  private func updatesDetail(_ updates: UpdatesInfo) -> String {
+    guard updates.check else { return "off: nothing is sent to ttycat" }
+    if !updates.error.isEmpty { return "couldn't reach ttycat: tries again within the hour" }
+    return "on start and every hour: the board's model and versions only"
   }
 
   private var daemonText: String {

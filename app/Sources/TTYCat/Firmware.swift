@@ -36,6 +36,18 @@ struct FirmwareImage: Decodable {
   }
 }
 
+extension FirmwareImage {
+  /// What to offer an official board: firmware the daemon downloaded, when it's newer than what this app
+  /// carries, and otherwise the app's own. With the folder to write it from: the daemon checks its signature.
+  static func best(carried: FirmwareImage?, carriedFolder: String?, status: DaemonStatus?) -> (image: FirmwareImage?, folder: String?) {
+    if let downloaded = status?.updates?.firmware,
+       carried.map({ FirmwareVersion.isNewer(downloaded.version, than: $0.version) == true }) ?? true {
+      return (FirmwareImage(version: downloaded.version, board: status?.board.name), downloaded.dir)
+    }
+    return (carried, carriedFolder)
+  }
+}
+
 enum FirmwareVersion {
   /// Number by number, so 0.10.0 is newer than 0.9.1. Nil if either isn't plain numbers.
   static func isNewer(_ a: String, than b: String) -> Bool? {

@@ -103,6 +103,20 @@ struct DaemonStatus: Decodable {
   var flash: FlashInfo?  // nil from a daemon older than firmware updates
   var look: LookInfo?
   var core: CoreInfo?  // nil from a daemon older than core updates
+  var updates: UpdatesInfo?  // nil from a daemon older than the update check
+}
+
+/// The daemon's check with ttycat's update server: daemon/updates.py.
+struct UpdatesInfo: Decodable, Equatable {
+  var check: Bool  // the setting: off, it never asks
+  var checked: Double?  // when it last got an answer
+  var error: String = ""
+  var firmware: Downloaded?  // newer firmware for the official board that's connected, downloaded and checked
+
+  struct Downloaded: Decodable, Equatable {
+    var version: String
+    var dir: String
+  }
 }
 
 /// New core releases for a board of the person's own, built on this Mac with their folder: daemon/core_update.py.

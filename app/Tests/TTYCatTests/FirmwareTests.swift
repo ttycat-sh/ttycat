@@ -145,3 +145,16 @@ private func withCore(_ core: CoreInfo, flash state: String = "idle") -> DaemonS
   try #"{"body":"\#(body)","key":"k","sig":"s"}"#.write(to: folder.appendingPathComponent("release.json"), atomically: true, encoding: .utf8)
   #expect(FirmwareImage.read(folder.path)?.version == "0.11.0")
 }
+
+@Test func downloadedFirmwareIsOfferedWhenItsNewer() {
+  var s = status(fw: "0.6.1")
+  s.updates = UpdatesInfo(check: true, firmware: .init(version: "0.8.0", dir: "/tmp/fw/0.8.0"))
+  let best = FirmwareImage.best(carried: image, carriedFolder: "/app/firmware", status: s)
+  #expect(best.image?.version == "0.8.0" && best.folder == "/tmp/fw/0.8.0")
+  #expect(plan(s, image: best.image) == .update(from: "0.6.1", to: "0.8.0"))
+  s.updates?.firmware = .init(version: "0.7.0", dir: "/tmp/fw/0.7.0")  // not newer than what the app carries
+  #expect(FirmwareImage.best(carried: image, carriedFolder: "/app/firmware", status: s).folder == "/app/firmware")
+  #expect(FirmwareImage.best(carried: nil, carriedFolder: nil, status: s).image?.version == "0.7.0")
+  s.updates = nil
+  #expect(FirmwareImage.best(carried: image, carriedFolder: "/app/firmware", status: s).folder == "/app/firmware")
+}
