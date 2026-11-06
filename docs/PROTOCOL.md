@@ -9,7 +9,7 @@ A USB-to-serial chip runs at 230400 baud. Over USB straight to the chip, the spe
 ## Device to Mac
 | Message | Means |
 |---|---|
-| `{"t":"hello","fw":"my-lamp-1.0","b":"my-board","p":1,"art":1}` | Who it is. `fw` is its name, `b` the board, if it has a folder in `firmware/boards`, `p` the protocol version it speaks, and `art` the art format it draws, if it draws any. Send it at the start, and again whenever you've heard nothing for 2 seconds, because a restarted daemon has forgotten you. The daemon answers `{"t":"hello","p":1}`, and sends nothing else until it's heard one |
+| `{"t":"hello","fw":"my-lamp-1.0","b":"my-board","p":1,"art":1,"id":"a1b2c3d4e5f6","nm":"desk cat"}` | Who it is. `fw` is its build, `b` the board's folder, if it has one, `p` the protocol version it speaks, and `art` the art format it draws, if it draws any. `id` is its chip's own ID, 12 lowercase hex digits, such as its MAC address: a device that says one keeps the name the person gave it, and says it in `nm` once it has one (see "Your device's name"). Send it at the start, and again whenever you've heard nothing for 2 seconds, because a restarted daemon has forgotten you. The daemon answers `{"t":"hello","p":1}`, and sends nothing else until it's heard one |
 | `{"t":"act","a":ACTION,"id":ID,"rev":REV}` | Do something: see below |
 | `{"t":"watch","id":ID}` | Put this session's recent history in `state` |
 | `{"t":"dim","on":true}` | Its screen has gone dim, and Bit dozes on the Mac too |
@@ -35,6 +35,8 @@ The Mac answers each `act` with `{"t":"ack","ok":true,"msg":""}`. An `ack` doesn
 `fw` decides what it can do. Only a plain version number, like `0.9.1`, counts as ttycat's own, and only release builds say that. Any other name is someone's own device: it can do everything above except approve, the app never offers to update it, and Setup can let that exact name approve if the person confirms.
 
 Firmware built from this repo works this out for itself. It says `custom-0.9.1-a1b2c3d4`, where the end comes from the source, so every change gets a new name and has to be allowed again. Set `FW_LABEL` in `model.h` to put your own name first.
+
+The person can also name the device itself in Setup, such as "desk cat". That's only what the app calls it: approving still goes by `fw`, never by this name. The Mac sends `{"t":"name","name":"desk cat"}`, or `""` to take it away. A device that says `id` keeps it somewhere a new build doesn't erase, such as NVS, and says it in its hello's `nm` from then on. A name is up to 32 bytes of UTF-8, with no control characters, `"` or `\`, so it needs no escaping. Refuse anything else, and say `name: not kept`. The Mac keeps a copy, and sends it again to a device that says `id` but no `nm`, such as one whose storage was erased. A device that doesn't say `id` is named on the Mac only, and two of the same board share its name.
 
 ## Mac to device
 `{"t":"state", ...}` about once a second, replacing the last one. Treat no `state` for a few seconds as "the Mac has gone", and show that differently from "nothing's happening".

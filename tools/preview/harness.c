@@ -60,6 +60,7 @@ void link_answer(const char *id, const char *rev, int questions, const uint8_t *
 }
 bool link_usb_connected(void) { return true; }
 void link_send_shot(void) {}
+void link_hello(void) {}
 void sound_begin(void) {}
 void sound_chime(void) {}
 bool sound_muted(void) { return muted; }

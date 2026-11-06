@@ -1731,6 +1731,6 @@ void ui_tick(void) {
   int64_t now = now_ms();
   if (now - last_rx_ms > 2000 && now - last_hello > 1000) {
     last_hello = now;
-    link_send_line("{\"t\":\"hello\",\"fw\":\"" FW_NAME "\",\"b\":\"" FW_BOARD "\",\"p\":" FW_PROTOCOL ",\"art\":" ART_FORMAT_S "}");
+    link_hello();
   }
 }

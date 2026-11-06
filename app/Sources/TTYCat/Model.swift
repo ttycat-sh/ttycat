@@ -438,16 +438,16 @@ final class TTYCatModel: ObservableObject {
     // An update takes a while: you may have closed the panel by the time it ends.
     let state = status?.flash?.state
     if state != lastFlashState, let flash = status?.flash, lastFlashState != nil {
-      if state == "done" { show("Board updated to \(flash.to ?? "the new firmware")") }
-      if state == "failed" { show("Board update failed: \(flash.msg)") }
+      if state == "done" { show("\(boardTitle) updated to \(flash.to ?? "the new firmware")") }
+      if state == "failed" { show("\(boardTitle) update failed: \(flash.msg)") }
     }
     if state != nil { lastFlashState = state }
 
     // A core update takes minutes: it's said when it ends, wherever you are.
     let core = status?.core
     if core?.state != lastCoreState, let core, lastCoreState != nil {
-      if core.state == "done" { show("Board updated to core \(core.to ?? "")") }
-      if core.state == "failed" { show("Core update failed: \(core.msg)") }
+      if core.state == "done" { show("\(boardTitle) updated to core \(core.to ?? "")") }
+      if core.state == "failed" { show("\(boardTitle)'s core update failed: \(core.msg)") }
     }
     if let state = core?.state { lastCoreState = state }
   }
@@ -485,7 +485,7 @@ final class TTYCatModel: ObservableObject {
       select(row)
     }
     Alerts.openPanel()
-    show("\(board.fw ?? "It") can't approve yet. Setup > Firmware can change that.")
+    show("\(board.label ?? board.fw ?? "It") can't approve yet. Setup > Firmware can change that.")
   }
 
   /// `unknown`: you've agreed to overwrite a device that hasn't said what it is. `port`: which one.
@@ -503,6 +503,25 @@ final class TTYCatModel: ObservableObject {
       DispatchQueue.main.async {
         MainActor.assumeIsolated {
           self.flashStarting = false
+          if !ok { self.show(message?.isEmpty == false ? message! : "the daemon didn't answer") }
+          self.poll()
+        }
+      }
+    }
+  }
+
+  /// What to call the board: the name it was given, or plainly "Board".
+  var boardTitle: String { status?.board.label ?? "Board" }
+
+  /// Names the board that's plugged in. Empty takes the name away. Approving stays with each build.
+  func nameBoard(_ name: String) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      let data = Ctl.request(["t": "name", "name": name], timeout: 3)
+      let reply = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+      let ok = reply?["ok"] as? Bool ?? false
+      let message = reply?["msg"] as? String
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
           if !ok { self.show(message?.isEmpty == false ? message! : "the daemon didn't answer") }
           self.poll()
         }

@@ -79,6 +79,7 @@ struct BoardInfo: Decodable {
   var dim: Bool?  // its screen is dim, and Bit dozes there
   var approves: Bool?  // it may say yes to prompts: see daemon/devices.py
   var name: String?  // which folder in firmware/boards it was built from
+  var label: String?  // the name the person gave it, kept on the board and on this Mac
   var outdated: Bool?  // it speaks another version of the protocol, so it's not being sent anything
   var silent: [String]?  // ports that were tried and said nothing
   var probing: Bool?  // trying one now

@@ -84,7 +84,8 @@ private struct TopBar: View {
       if m.boardMatters {
         Rectangle().fill(m.boardConnected ? Palette.green : Palette.faint).frame(width: 6, height: 6)
         if Extensions.pages.isEmpty {  // with more tabs, the light says it alone
-          Text("BOARD").font(Pixel.small).foregroundStyle(m.boardConnected ? Palette.muted : Palette.faint)
+          Text(m.boardConnected ? m.status?.board.label ?? "BOARD" : "BOARD").font(Pixel.small).lineLimit(1)
+            .foregroundStyle(m.boardConnected ? Palette.muted : Palette.faint)
         }
       }
     }
@@ -554,7 +555,8 @@ private struct SetupPage: View {
   private var boardText: String {
     guard let board = m.status?.board, board.connected else { return "not connected" }
     let port = board.port.map { ($0 as NSString).lastPathComponent.replacingOccurrences(of: "cu.", with: "") } ?? ""
-    return board.fw.map { "fw \($0) \u{B7} \(port)" } ?? port
+    let fw = board.fw.map { "fw \($0) \u{B7} \(port)" } ?? port
+    return board.label.map { "\($0) \u{B7} \(fw)" } ?? fw
   }
 
   private var quitNote: String {
@@ -570,6 +572,7 @@ private struct FirmwareSection: View {
 
   var body: some View {
     Section(title: "Firmware") {
+      if m.boardConnected { NameRow() }
       switch m.firmwarePlan {
       case .noImage:
         note("This build carries no firmware. Build it, then run app/build.sh.")
@@ -759,6 +762,44 @@ struct Toggled: View {
     }
     .buttonStyle(PixelPress())
     .disabled(!enabled)
+  }
+}
+
+/// The board's name, kept on the board and on this Mac. Renaming never changes what it may approve.
+private struct NameRow: View {
+  @EnvironmentObject var m: TTYCatModel
+  @StateObject private var editing = Local(false)
+  @StateObject private var typed = Local("")
+
+  var body: some View {
+    if editing.value {
+      TextField("", text: $typed.value, prompt: Text("desk cat").foregroundStyle(Palette.faint))
+        .textFieldStyle(.plain)
+        .font(Pixel.body)
+        .foregroundStyle(Palette.white)
+        .padding(.horizontal, 6)
+        .frame(height: 26)
+        .pixelBox(Palette.code, border: Palette.orange)
+        .onSubmit(save)
+      HStack(spacing: 6) {
+        PixelButton(title: "Cancel") { editing.value = false }
+        PixelButton(title: "Save", loud: true, action: save)
+      }
+    } else {
+      HStack(spacing: 6) {
+        Fact(name: "Name", value: m.status?.board.label ?? "none yet", good: m.status?.board.label != nil)
+        PixelButton(title: "Rename") {
+          typed.value = m.status?.board.label ?? ""
+          editing.value = true
+        }
+        .frame(width: 96)
+      }
+    }
+  }
+
+  private func save() {
+    editing.value = false
+    m.nameBoard(typed.value)
   }
 }
 

@@ -7,6 +7,8 @@
 #include "art.h"
 #include "board.h"
 #include "cJSON.h"
+#include "esp_mac.h"
+#include "nvs.h"
 #include "sdkconfig.h"
 #if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
 #include "driver/usb_serial_jtag.h"
@@ -297,6 +299,65 @@ static bool parse_art(const cJSON *j) {
   return ok;
 }
 
+// The board's name, from the person, kept in its own storage beside the mute setting, so a new build
+// keeps it. Only what JSON takes as it is, so the hello needs no escaping. Up to 32 bytes of UTF-8.
+#define LABEL_MAX 32
+static char named[LABEL_MAX + 1];
+static bool named_read;
+static portMUX_TYPE named_lock = portMUX_INITIALIZER_UNLOCKED;  // set from the link's task, read from the UI's
+
+static bool name_ok(const char *s) {
+  if (strlen(s) > LABEL_MAX) return false;
+  for (const unsigned char *c = (const unsigned char *)s; *c; c++)
+    if (*c < 0x20 || *c == 0x7f || *c == '"' || *c == '\\') return false;
+  return true;
+}
+
+static void name_set(const char *s) {
+  if (!name_ok(s)) {
+    link_send_line("name: not kept");  // the daemon logs it
+    return;
+  }
+  nvs_handle_t h;
+  if (nvs_open("ttycat", NVS_READWRITE, &h) == ESP_OK) {
+    if (*s) nvs_set_str(h, "name", s);
+    else nvs_erase_key(h, "name");
+    nvs_commit(h);
+    nvs_close(h);
+  }
+  taskENTER_CRITICAL(&named_lock);
+  strcpy(named, s);
+  named_read = true;
+  taskEXIT_CRITICAL(&named_lock);
+}
+
+void link_hello(void) {
+  char name[LABEL_MAX + 1] = "";
+  if (!named_read) {  // storage is ready by the first hello: sound_begin opens it
+    size_t n = sizeof(name);
+    nvs_handle_t h;
+    if (nvs_open("ttycat", NVS_READONLY, &h) == ESP_OK) {
+      if (nvs_get_str(h, "name", name, &n) != ESP_OK || !name_ok(name)) name[0] = 0;
+      nvs_close(h);
+    }
+    taskENTER_CRITICAL(&named_lock);
+    if (!named_read) strcpy(named, name);
+    named_read = true;
+    taskEXIT_CRITICAL(&named_lock);
+  }
+  taskENTER_CRITICAL(&named_lock);
+  strcpy(name, named);
+  taskEXIT_CRITICAL(&named_lock);
+  uint8_t mac[6] = {0};
+  esp_efuse_mac_get_default(mac);
+  char line[200];
+  snprintf(line, sizeof(line),
+           "{\"t\":\"hello\",\"fw\":\"" FW_NAME "\",\"b\":\"" FW_BOARD "\",\"p\":" FW_PROTOCOL ",\"art\":" ART_FORMAT_S
+           ",\"id\":\"%02x%02x%02x%02x%02x%02x\"%s%s%s}",
+           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], *name ? ",\"nm\":\"" : "", name, *name ? "\"" : "");
+  link_send_line(line);
+}
+
 static void handle_line(char *text, size_t len) {
   if (text[0] != '{') return;  // boot messages and panic output share the port
   cJSON *j = cJSON_Parse(text);
@@ -310,6 +371,9 @@ static void handle_line(char *text, size_t len) {
     if (len > ART_LINE_MAX || !parse_art(j)) link_send_line("art: not shown");  // the daemon logs it
   } else if (!strcmp(t, "hello")) {
     ui_link_hello();
+  } else if (!strcmp(t, "name")) {
+    const cJSON *name = cJSON_GetObjectItemCaseSensitive(j, "name");
+    if (cJSON_IsString(name)) name_set(name->valuestring);
   } else if (!strcmp(t, "ack")) {
     ev.type = UI_EV_ACK;
     const cJSON *ok = cJSON_GetObjectItemCaseSensitive(j, "ok");

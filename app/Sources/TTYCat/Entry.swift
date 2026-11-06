@@ -164,7 +164,7 @@ enum Preview {
       board: BoardInfo(
         connected: connected, port: connected ? "/dev/cu.usbmodem1101" : nil,
         fw: !connected || scene == "fw-back" ? nil : scene.hasPrefix("fw-custom") ? "my-lamp-1.0" : "0.6.1",
-        approves: scene == "fw-custom-on", outdated: scene == "fw-custom-old",
+        approves: scene == "fw-custom-on", label: scene.hasPrefix("fw-core") ? "desk cat" : nil, outdated: scene == "fw-custom-old",
         silent: scene == "fw-unknown" ? ["/dev/cu.usbmodem1101"] : []),
       machines: [MachineInfo(host: "studio", up: true, answers: true)],
       flash: FlashInfo(
