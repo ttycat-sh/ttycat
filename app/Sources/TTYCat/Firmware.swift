@@ -19,7 +19,19 @@ struct FirmwareImage: Decodable {
   static var folder: String? { Bundle.main.resourceURL?.appendingPathComponent("firmware").path }
 
   static func inApp() -> FirmwareImage? {
-    guard let folder, let data = FileManager.default.contents(atPath: folder + "/manifest.json") else { return nil }
+    guard let folder else { return nil }
+    return read(folder)
+  }
+
+  /// What an image says it is: from its signed release.json if it has one, as the daemon reads it.
+  /// Only for showing: the daemon checks the signature before writing anything.
+  static func read(_ folder: String) -> FirmwareImage? {
+    struct Signed: Decodable { let body: String }
+    if let data = FileManager.default.contents(atPath: folder + "/release.json") {
+      guard let signed = try? JSONDecoder().decode(Signed.self, from: data) else { return nil }
+      return try? JSONDecoder().decode(FirmwareImage.self, from: Data(signed.body.utf8))
+    }
+    guard let data = FileManager.default.contents(atPath: folder + "/manifest.json") else { return nil }
     return try? JSONDecoder().decode(FirmwareImage.self, from: data)
   }
 }

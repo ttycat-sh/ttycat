@@ -16,11 +16,15 @@ IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID A
 [ -n "$IDENTITY" ] || { echo "no Developer ID Application certificate in the keychain" >&2; exit 1; }
 
 FIRMWARE="$(dirname "$HERE")/firmware/build-release"
-[ -f "$FIRMWARE/ttycat.bin" ] || { echo "run tools/release_firmware.sh first" >&2; exit 1; }
+IMAGE="$(dirname "$HERE")/firmware/build-release-image"
+[ -f "$FIRMWARE/ttycat.bin" ] && [ -f "$IMAGE/release.json" ] || { echo "run tools/release_firmware.sh first" >&2; exit 1; }
+# Checked as the app will check it: signed by a key the app trusts, and sound.
+python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import flasher; flasher.read_image(sys.argv[2])' \
+  "$(dirname "$HERE")/daemon" "$IMAGE" || { echo "the release image doesn't check out" >&2; exit 1; }
 ls "$(dirname "$HERE")"/firmware/build-release-core/ttycat-core-*.json >/dev/null 2>&1 || { echo "no signed core release: run tools/release_firmware.sh with TTYCAT_SIGNING_KEY" >&2; exit 1; }
 [ -z "$(find "$(dirname "$HERE")/firmware/main" "$(dirname "$HERE")/firmware/boards" -newer "$FIRMWARE/ttycat.bin" -print -quit)" ] || { echo "the firmware has changed: run tools/release_firmware.sh again" >&2; exit 1; }
 
-TTYCAT_FIRMWARE_BUILD=$FIRMWARE TTYCAT_SIGN_IDENTITY="$IDENTITY" TTYCAT_SIGN_TIMESTAMP=--timestamp "$HERE/build.sh"
+TTYCAT_FIRMWARE_IMAGE=$IMAGE TTYCAT_SIGN_IDENTITY="$IDENTITY" TTYCAT_SIGN_TIMESTAMP=--timestamp "$HERE/build.sh"
 
 # Sold as ttycat's firmware, so it has to say so: a custom build would never be offered as an update.
 python3 -c 'import json, re, sys; sys.exit(not re.fullmatch(r"[0-9]+(\.[0-9]+)*", json.load(open(sys.argv[1]))["version"]))' \

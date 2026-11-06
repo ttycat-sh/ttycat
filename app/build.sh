@@ -20,13 +20,20 @@ cp "$BIN" "$APP/Contents/MacOS/ttycat"
 cp "$ROOT"/tools/fonts/*.ttf "$ROOT"/tools/fonts/OFL-*.txt "$APP/Contents/Resources/"
 
 # The firmware this app can put on the board. It's only ever the last build: firmware/ isn't built here.
-# app/release.sh points this at the release build.
+# app/release.sh gives it the signed release image instead (TTYCAT_FIRMWARE_IMAGE), as is: the daemon
+# writes ttycat's own firmware only from a signed image.
 FIRMWARE=${TTYCAT_FIRMWARE_BUILD:-$ROOT/firmware/build}
-if [ -f "$FIRMWARE/flasher_args.json" ]; then
+if [ -n "${TTYCAT_FIRMWARE_IMAGE:-}" ]; then
+  ditto "$TTYCAT_FIRMWARE_IMAGE" "$APP/Contents/Resources/firmware"
+elif [ -f "$FIRMWARE/flasher_args.json" ]; then
   # A firmware build it can't use mustn't stop here: an app with no Info.plist crashes when it's opened.
   # It goes without, as with no build at all, and app/release.sh won't release one like that.
   python3 "$ROOT/tools/firmware_bundle.py" "$FIRMWARE" "$APP/Contents/Resources/firmware" \
     || echo "warning: that firmware build can't be used; this app can't update the board" >&2
+  if python3 -c 'import json, re, sys; sys.exit(not re.fullmatch(r"[0-9.]+", json.load(open(sys.argv[1]))["version"]))' \
+      "$APP/Contents/Resources/firmware/manifest.json" 2>/dev/null; then
+    echo "warning: that's a release build, but not signed, so this app won't write it: see tools/release_firmware.sh" >&2
+  fi
   if [ -n "$(find "$ROOT/firmware/main" "$ROOT/firmware/boards" -newer "$FIRMWARE/ttycat.bin" -print -quit)" ]; then
     echo "warning: firmware has changes that aren't built; the app carries the older build" >&2
   fi

@@ -134,3 +134,14 @@ private func withCore(_ core: CoreInfo, flash state: String = "idle") -> DaemonS
   #expect(plan(status(fw: "0.6.1"), image: nil) == .noImage)
   #expect(plan(nil, image: nil) == .noImage)
 }
+
+@Test func theSignedReleaseIsWhatTheAppShows() throws {
+  let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+  defer { try? FileManager.default.removeItem(at: folder) }
+  try #"{"version":"0.9.0","board":"this-board"}"#.write(to: folder.appendingPathComponent("manifest.json"), atomically: true, encoding: .utf8)
+  #expect(FirmwareImage.read(folder.path)?.version == "0.9.0")
+  let body = #"{\"version\":\"0.11.0\",\"board\":\"this-board\",\"kind\":\"ttycat-firmware\"}"#
+  try #"{"body":"\#(body)","key":"k","sig":"s"}"#.write(to: folder.appendingPathComponent("release.json"), atomically: true, encoding: .utf8)
+  #expect(FirmwareImage.read(folder.path)?.version == "0.11.0")
+}
