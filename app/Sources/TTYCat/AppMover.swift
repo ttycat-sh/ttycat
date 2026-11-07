@@ -41,6 +41,7 @@ enum AppMover {
   /// image it's on), and opens the new one once this has quit. Says so if it can't.
   @discardableResult
   static func move() -> Bool {
+    StatusPanel.shared?.close()  // it sits above other windows, such as an alert that it couldn't
     let fm = FileManager.default
     let running = Bundle.main.bundleURL
     let original = untranslocated(running)  // nil: macOS didn't say where it really is

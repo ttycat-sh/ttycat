@@ -58,9 +58,11 @@ final class AppUpdater: NSObject {
     controller?.updater.automaticallyChecksForUpdates = on
   }
 
-  /// The person asked: Sparkle's own window says what it found.
+  /// The person asked: Sparkle's own window says what it found. The panel sits above other windows,
+  /// so it closes first.
   func check() {
     guard let controller else { return }
+    StatusPanel.shared?.close()
     NSApp.activate()
     controller.checkForUpdates(nil)
   }
@@ -102,11 +104,24 @@ extension AppUpdater: SPUStandardUserDriverDelegate {
   ) {
     let version = update.displayVersionString
     MainActor.assumeIsolated {
-      if !handleShowingUpdate { ready?(version) }
+      if handleShowingUpdate { StatusPanel.shared?.close() } else { ready?(version) }
     }
   }
 
+  nonisolated func standardUserDriverRequestsVersionDisplayer() -> (any SUVersionDisplay)? { self }
+
   nonisolated func standardUserDriverWillFinishUpdateSession() {
     MainActor.assumeIsolated { ready?(nil) }
+  }
+}
+
+// "You have 0.2.0-dev.1", not CFBundleShortVersionString's 0.2.0: macOS allows only numbers there.
+extension AppUpdater: SUVersionDisplay {
+  nonisolated func formatUpdateVersion(
+    fromUpdate update: SUAppcastItem, andBundleDisplayVersion inOutBundleDisplayVersion: AutoreleasingUnsafeMutablePointer<NSString>,
+    withBundleVersion bundleVersion: String
+  ) -> String {
+    inOutBundleDisplayVersion.pointee = MainActor.assumeIsolated { Self.version } as NSString
+    return update.displayVersionString
   }
 }

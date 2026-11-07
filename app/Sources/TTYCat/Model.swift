@@ -667,6 +667,7 @@ final class TTYCatModel: ObservableObject {
   /// login item, what an extension added, and if you choose, ~/.ttycat with Bit in it. Then it quits
   /// and moves itself to the Trash. The board keeps its firmware.
   func uninstall() {
+    StatusPanel.shared?.close()  // the panel sits above other windows: the alert would be behind it
     NSApp.activate()
     let alert = NSAlert()
     alert.messageText = "Uninstall ttycat?"
