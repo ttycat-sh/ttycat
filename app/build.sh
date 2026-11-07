@@ -7,7 +7,6 @@ set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(dirname "$HERE")
 APP="$HERE/build/ttycat.app"
-VERSION=0.1.0
 
 cd "$HERE"
 # An extended build adds its flags and its sources: see Extensions.swift.
@@ -55,6 +54,12 @@ fi
 # it still builds, and uses the system's Python, for working on it. A release needs it: see release.sh.
 mkdir -p "$APP/Contents/Resources/daemon"
 cp "$ROOT"/daemon/*.py "$ROOT/daemon/agent_rules.json" "$ROOT/daemon/agent_rules.LICENSE" "$APP/Contents/Resources/daemon/"
+# A release has a version, from its tag: TTYCAT_VERSION, X.Y.Z for prod or X.Y.Z-dev.N for dev. Then the
+# daemon gets build.json, and ignores the developer overrides; the keys it trusts are that environment's.
+# Without one it's a developer's build, 0.0.0. See tools/app_build.py.
+INFO=$(python3 "$ROOT/tools/app_build.py" "$APP/Contents/Resources/daemon" ${TTYCAT_VERSION:+"$TTYCAT_VERSION"})
+SHORT=${INFO% *}
+BUILD=${INFO#* }
 cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$ROOT/THIRD_PARTY.md" "$APP/Contents/Resources/"
 # Anything an extended build adds to the app, such as a daemon plugin: see daemon/plugins.py.
 if [ -n "${TTYCAT_EXTRA_RESOURCES:-}" ]; then
@@ -80,8 +85,9 @@ cat > "$APP/Contents/Info.plist" <<EOF
   <key>CFBundleExecutable</key><string>ttycat</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>$VERSION</string>
-  <key>CFBundleVersion</key><string>$VERSION</string>
+  <key>CFBundleShortVersionString</key><string>$SHORT</string>
+  <key>CFBundleVersion</key><string>$BUILD</string>
+  <key>TTYCatVersion</key><string>${TTYCAT_VERSION:-developer build}</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>LSMultipleInstancesProhibited</key><true/>
@@ -97,18 +103,16 @@ iconutil -c icns -o "$APP/Contents/Resources/AppIcon.icns" "$ICONSET"
 
 # Your Apple Development certificate if there is one; otherwise signed for this Mac only.
 # release.sh passes a Developer ID instead. Hardened either way, so a test build behaves like a release.
-# An Apple Development certificate of ttycat's own team, never another team's, such as an employer's.
-# Its name ends in the person's ID, so the team is read from the certificate itself.
+# An Apple Development certificate of ttycat's own team, never another team's, such as an employer's:
+# the one that runs longest, by its fingerprint, since a renewed one has the same name. TTYCAT_SIGN_IDENTITY
+# and TTYCAT_SIGN_NAME are what release.sh passes instead.
 TEAM=${TTYCAT_TEAM_ID:-D4N534TM9Q}
-own_development_identity() {
-  security find-identity -v -p codesigning | awk -F'"' '/Apple Development/ {print $2}' | while read -r name; do
-    if security find-certificate -c "$name" -p | openssl x509 -noout -subject 2>/dev/null | grep -Eq "OU *= *$TEAM([,/]|$)"; then
-      echo "$name"
-      break
-    fi
-  done
-}
-IDENTITY=${TTYCAT_SIGN_IDENTITY:-$(own_development_identity)}
+if [ -z "${TTYCAT_SIGN_IDENTITY:-}" ]; then
+  FOUND=$(python3 "$ROOT/tools/signing_identity.py" "Apple Development" "$TEAM")
+  TTYCAT_SIGN_IDENTITY=${FOUND%%	*}
+  TTYCAT_SIGN_NAME=${FOUND#*	}
+fi
+IDENTITY=$TTYCAT_SIGN_IDENTITY
 STAMP=${TTYCAT_SIGN_TIMESTAMP:---timestamp=none}
 # Everything that runs is signed on its own, from the inside out.
 find "$APP/Contents/Resources" -type f | while read -r file; do
@@ -118,7 +122,8 @@ find "$APP/Contents/Resources" -type f | while read -r file; do
 done
 codesign --force --options runtime "$STAMP" --sign "${IDENTITY:--}" "$APP"
 codesign --verify --strict "$APP"
-echo "built: $APP (signed: ${IDENTITY:-ad hoc}, $(du -sh "$APP" | cut -f1))"
+SIGNED=${TTYCAT_SIGN_NAME:-${IDENTITY:-ad hoc}}
+echo "built: $APP (${TTYCAT_VERSION:-developer build}, signed: $SIGNED, $(du -sh "$APP" | cut -f1))"
 
 if [ "${1:-}" = install ]; then
   DEST="/Applications/ttycat.app"
