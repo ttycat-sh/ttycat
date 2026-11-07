@@ -17,7 +17,7 @@ The folders here are ttycat's own: the official board, a reference board, and th
 
     idf.py -B build-NAME -D BOARD_DIR=/path/to/NAME build
 
-Keep the `set(BOARD_API ...)` line at the top of its `CMakeLists.txt`. It says which version of `../main/board.h` the folder was made for, and a release made for another won't build with it. Flash it with `daemon/ttycatd.py flash`, and the board is registered for updates: the Mac app then builds each new release for it with your folder (see the `ttycat-new-board` skill). `ttycatd.py register-board` does the same for a board flashed some other way.
+Keep the `set(BOARD_API ...)` line at the top of its `CMakeLists.txt`. It says which version of `../main/board.h` the folder was made for, and a release made for another won't build with it. Flash it with `daemon/ttycatd.py flash`, and the board is registered for updates: the Mac app then builds each new release for it with your folder (see the `ttycat-new-board` skill). A board flashed some other way is registered from Setup > Firmware > **Choose its folder**: the daemon checks the folder is this board's, and reads what the board runs back off it, as the build to put back if an update fails. Nothing is written to the board. `ttycatd.py register-board FOLDER` does the same from a terminal.
 
 A folder here builds with `-D BOARD=NAME` instead.
 

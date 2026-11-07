@@ -121,7 +121,8 @@ struct UpdatesInfo: Decodable, Equatable {
 
 /// New core releases for a board of the person's own, built on this Mac with their folder: daemon/core_update.py.
 struct CoreInfo: Decodable, Equatable {
-  var registered: Bool  // its folder is known, so the app can build for it
+  var registered: Bool  // its folder is known, and this Mac has a copy of what it runs, so the app can build for it
+  var folder: String? = nil  // the folder registered for it last, even if it runs another build now
   var core: String?  // the release its build was made from
   var available: String?  // a newer signed release
   var blocked: String = ""  // why that one can't be built for it yet

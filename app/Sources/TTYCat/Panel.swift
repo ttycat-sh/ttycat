@@ -667,6 +667,15 @@ private struct FirmwareSection: View {
           FlashBar(pct: pct)
           note("The new build didn't start. Don't unplug the board.", warn: true)
         }
+      case .registering(let pct, let waiting):
+        if waiting {
+          Fact(name: "Read its firmware", value: "waiting for the board", good: true)
+          FlashBar(pct: 100)
+        } else {
+          Fact(name: "Reading its firmware", value: "\(pct)%", good: true)
+          FlashBar(pct: pct)
+        }
+        note("A copy of what it runs, to put back if an update ever fails. Nothing is written to it.")
       }
       if let flash = m.status?.flash, flash.state == "failed", !m.flashBusy {
         note("Last try failed: \(flash.msg)", warn: true)
@@ -691,8 +700,18 @@ private struct FirmwareSection: View {
       if core.state == "failed", !core.msg.isEmpty, !m.flashBusy {
         note("Last update: \(core.msg)", warn: true)
       }
-    } else {
-      note("ttycat's updates can be built for this board from its own folder. Ask Claude to register the board, and they'll show here.")
+    } else if let core {
+      if core.folder != nil {
+        note("It runs a build this Mac has no copy of. Choose its folder again, so the one it runs can go back on if an update fails.", warn: true)
+      } else {
+        note("ttycat's updates are built for this board with its own code. Choose the folder it was built from\(m.status?.board.name.map { ", named \($0)" } ?? ""), and they'll show here. The board's firmware is read, not changed.")
+      }
+      PixelButton(title: core.folder == nil ? "Choose its folder" : "Choose its folder again", enabled: !m.flashBusy) {
+        m.chooseBoardFolder()
+      }
+      if let refused = m.registerRefused {
+        note("That folder wasn't taken: \(refused)", warn: true)
+      }
     }
   }
 
@@ -719,7 +738,7 @@ private struct FirmwareSection: View {
   }
 
   private func note(_ text: String, warn: Bool = false) -> some View {
-    Text(text).font(Pixel.small).foregroundStyle(warn ? Palette.orange : Palette.muted).lineLimit(4)
+    Text(text).font(Pixel.small).foregroundStyle(warn ? Palette.orange : Palette.muted)
       .fixedSize(horizontal: false, vertical: true)
       .frame(maxWidth: .infinity, alignment: .leading)
   }

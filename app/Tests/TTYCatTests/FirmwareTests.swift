@@ -158,3 +158,24 @@ private func withCore(_ core: CoreInfo, flash state: String = "idle") -> DaemonS
   s.updates = nil
   #expect(FirmwareImage.best(carried: image, carriedFolder: "/app/firmware", status: s).folder == "/app/firmware")
 }
+
+@Test func registeringShowsReadingThenWaiting() {
+  var s = withCore(CoreInfo(registered: false, core: "0.10.1"), flash: "reading")
+  s.flash?.job = "read"
+  #expect(s.flash?.busy == true)
+  #expect(plan(s) == .registering(pct: 40, waiting: false))
+  s.flash?.state = "restarting"
+  #expect(plan(s) == .registering(pct: 40, waiting: true))
+  s.flash?.state = "done"  // registered or not, it's the board's usual plan again
+  #expect(plan(s) == .customFirmware(name: "custom-0.10.1-896b3059", port: "cu.usbmodem1101", canReplace: true, outdated: false,
+                                     core: s.core))
+}
+
+@Test func whatTheDaemonSendsAboutRegistering() throws {
+  let core = try JSONDecoder().decode(CoreInfo.self, from: Data(
+    #"{"registered":false,"folder":"/Users/you/boards/desk-cat","core":"0.10.1","available":null,"blocked":"","state":"idle","pct":0,"msg":"","to":null}"#.utf8))
+  #expect(core.folder == "/Users/you/boards/desk-cat" && !core.registered)
+  let flash = try JSONDecoder().decode(FlashInfo.self, from: Data(
+    #"{"state":"reading","pct":12,"msg":"","to":"custom-0.10.1-896b3059","tool":true,"job":"read"}"#.utf8))
+  #expect(flash.job == "read" && flash.busy)
+}

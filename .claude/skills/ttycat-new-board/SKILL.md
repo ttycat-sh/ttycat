@@ -100,7 +100,7 @@ On an AMOLED, tell them a picture that stays put for months can burn in, and Bit
 
 ## 7. Updates from here on
 
-Flashing it through the daemon also registered it. The daemon saw it was the board's own build, where its folder and ESP-IDF are, and kept the build to put back if an update fails. Check `python3 daemon/ttycatd.py status`: `core.registered` should be `true`. If it isn't, `~/.ttycat/ttycatd.log` says why, usually a folder whose name isn't the board's, or no `set(BOARD_API ...)` line. From now on Setup > Firmware shows the board's core, and offers each new ttycat release, built on their Mac with this folder. Registering never lets it approve: that's still their choice in Setup.
+Flashing it through the daemon also registered it. The daemon saw it was the board's own build, where its folder and ESP-IDF are, and kept the build to put back if an update fails. Check `python3 daemon/ttycatd.py status`: `core.registered` should be `true`. If it isn't, `~/.ttycat/ttycatd.log` says why, usually a folder whose name isn't the board's, or no `set(BOARD_API ...)` line. A board that was flashed some other way, such as with `idf.py flash`, can be registered without flashing it again: they choose its folder in Setup > Firmware > **Choose its folder**, or you run `python3 daemon/ttycatd.py register-board FOLDER`. Either reads what it runs back off it, and writes nothing. From now on Setup > Firmware shows the board's core, and offers each new ttycat release, built on their Mac with this folder. Registering never lets it approve: that's still their choice in Setup.
 
 After any later change to the folder, build it and flash it the same way, and it's registered again with the new build.
 

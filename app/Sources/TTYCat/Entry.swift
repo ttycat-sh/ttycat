@@ -158,7 +158,7 @@ enum Preview {
     if scene == "pet-birthday" { model.petEvent = PetEvent(kind: .birthday, at: Date()) }
     if scene == "pet-hello" { model.petEvent = PetEvent(kind: .welcome, at: Date()) }
     let connected = !["unplugged", "fw-write", "welcome", "noboard", "fw-unknown"].contains(scene)
-    let flashState = ["fw-write": "flashing", "fw-back": "restarting", "fw-fail": "failed"][scene] ?? "idle"
+    let flashState = ["fw-write": "flashing", "fw-back": "restarting", "fw-fail": "failed", "fw-core-read": "reading"][scene] ?? "idle"
     model.status = scene == "stopped" ? nil : DaemonStatus(
       pid: 4242, s: rows, pet: pet,
       board: BoardInfo(
@@ -169,7 +169,7 @@ enum Preview {
       machines: [MachineInfo(host: "studio", up: true, answers: true)],
       flash: FlashInfo(
         state: flashState, pct: 62, msg: scene == "fw-fail" ? "Couldn't reach the board. Hold BOOT while you plug it in, then try again." : "",
-        to: "0.6.2", tool: true),
+        to: scene == "fw-core-read" ? "custom-0.10.1-896b3059" : "0.6.2", tool: true, job: scene == "fw-core-read" ? "read" : "write"),
       core: Self.previewCore(scene))
     if scene.hasPrefix("fw") {
       model.page = .setup
@@ -207,12 +207,14 @@ enum Preview {
     try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
   }
 
-  /// fw-core: an update to offer; -new: not registered; -blocked: needs the folder changed;
+  /// fw-core: an update to offer; -new: not registered; -again: runs a build this Mac has no copy of;
+  /// -read: reading what it runs, to register it; -blocked: needs the folder changed;
   /// -build, -write, -back: under way; -fail: the new build didn't start.
   static func previewCore(_ scene: String) -> CoreInfo? {
     guard scene.hasPrefix("fw-core") else { return nil }
-    var core = CoreInfo(registered: scene != "fw-core-new", core: "0.10.1", available: "0.11.0")
+    var core = CoreInfo(registered: !["fw-core-new", "fw-core-again", "fw-core-read"].contains(scene), core: "0.10.1", available: "0.11.0")
     switch scene {
+    case "fw-core-again": core.folder = "/Users/you/boards/desk-cat"
     case "fw-core-blocked": core.blocked = "This update needs the board's folder changed. Ask Claude to update it."
     case "fw-core-build": (core.state, core.pct, core.to) = ("building", 37, "0.11.0")
     case "fw-core-write": (core.state, core.to) = ("writing", "0.11.0")

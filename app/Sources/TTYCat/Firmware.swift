@@ -2,13 +2,14 @@
 import Foundation
 
 struct FlashInfo: Decodable {
-  var state: String  // idle | flashing | restarting | done | failed
+  var state: String  // idle | flashing | reading | restarting | done | failed
   var pct: Int
   var msg: String
   var to: String?
   var tool: Bool     // esptool was found
+  var job: String = "write"  // or "read": what a board of someone's own runs, read off it to register it
 
-  var busy: Bool { state == "flashing" || state == "restarting" }
+  var busy: Bool { ["flashing", "reading", "restarting"].contains(state) }
 }
 
 /// The firmware this copy of the app carries: app/build.sh packs it from firmware/build.
@@ -79,6 +80,7 @@ enum FirmwarePlan: Equatable {
   case unknownDevice(port: String)  // a port that doesn't answer: could be any device
   case customFirmware(name: String, port: String, canReplace: Bool, outdated: Bool, core: CoreInfo? = nil)  // someone's own: only ever updated from its own folder
   case coreUpdate(step: CoreStep, pct: Int, to: String)  // building a new core for someone's own board, and putting it on
+  case registering(pct: Int, waiting: Bool)  // reading what someone's own board runs, to keep a copy: nothing is written
   case upToDate(String)
   case boardNewer(board: String, app: String)
   case update(from: String, to: String)
@@ -98,6 +100,9 @@ enum FirmwarePlan: Equatable {
       case "writing": return .coreUpdate(step: flash.state == "restarting" ? .restarting : .writing, pct: flash.pct, to: to)
       default: return .coreUpdate(step: .puttingBack, pct: flash.pct, to: to)
       }
+    }
+    if flash.job == "read", flash.busy {
+      return .registering(pct: flash.pct, waiting: flash.state == "restarting")
     }
     if status.board.connected, let port = status.board.port, let fw = status.board.fw, FirmwareVersion.isCustom(fw),
        !flash.busy {

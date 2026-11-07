@@ -37,6 +37,7 @@ final class TTYCatModel: ObservableObject {
   @Published var maxPanelHeight: CGFloat = 2000  // how far down the screen it can go
   @Published var firmwareImage = FirmwareImage.inApp()
   @Published var flashStarting = false
+  @Published var registerRefused: String?  // why the folder chosen in Setup wasn't taken, shown under its button
   @Published var firmwarePlan = FirmwarePlan.notConnected
 
   let supervisor = Supervisor()
@@ -438,8 +439,14 @@ final class TTYCatModel: ObservableObject {
     // An update takes a while: you may have closed the panel by the time it ends.
     let state = status?.flash?.state
     if state != lastFlashState, let flash = status?.flash, lastFlashState != nil {
-      if state == "done" { show("\(boardTitle) updated to \(flash.to ?? "the new firmware")") }
-      if state == "failed" { show("\(boardTitle) update failed: \(flash.msg)") }
+      if flash.job == "read" {
+        if state == "done" { show(status?.core?.registered == true ? "\(boardTitle) is registered: its updates show in Setup"
+                                  : "\(boardTitle) was read, but not registered: see ~/.ttycat/ttycatd.log") }
+        if state == "failed" { show("Couldn't register \(boardTitle): \(flash.msg)") }
+      } else {
+        if state == "done" { show("\(boardTitle) updated to \(flash.to ?? "the new firmware")") }
+        if state == "failed" { show("\(boardTitle) update failed: \(flash.msg)") }
+      }
     }
     if state != nil { lastFlashState = state }
 
@@ -466,6 +473,53 @@ final class TTYCatModel: ObservableObject {
         MainActor.assumeIsolated {
           self.flashStarting = false
           if !ok { self.show(message?.isEmpty == false ? message! : "the daemon didn't answer") }
+          self.poll()
+        }
+      }
+    }
+  }
+
+  /// Setup's "Choose its folder": where a board of the person's own has its code, so ttycat's updates can be
+  /// built for it. The daemon checks the folder fits the board, then reads what the board runs as the copy to
+  /// put back: daemon/ttycatd.py start_register. The panel sits above other windows, so it closes first.
+  func chooseBoardFolder() {
+    guard !flashBusy, let name = status?.board.name else { return }
+    StatusPanel.shared?.close()
+    let panel = NSOpenPanel()
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = false
+    panel.canCreateDirectories = true  // New Folder, for a board whose folder isn't made yet
+    panel.allowsMultipleSelection = false
+    panel.prompt = "Choose"
+    panel.message = "The folder with \(boardTitle)'s own code, named \(name)"
+    if let folder = status?.core?.folder {
+      panel.directoryURL = URL(fileURLWithPath: folder).deletingLastPathComponent()
+    }
+    NSApp.activate()
+    panel.begin { response in
+      MainActor.assumeIsolated {
+        // Back to Setup either way, where how it went shows: a notification may not be allowed.
+        self.page = .setup
+        StatusPanel.shared?.open()
+        guard response == .OK, let url = panel.url else { return }
+        self.registerBoard(folder: url.path)
+      }
+    }
+  }
+
+  private func registerBoard(folder: String) {
+    guard !flashBusy else { return }
+    flashStarting = true
+    registerRefused = nil
+    DispatchQueue.global(qos: .userInitiated).async {
+      let data = Ctl.request(["t": "register", "folder": folder], timeout: 10)
+      let reply = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+      let ok = reply?["ok"] as? Bool ?? false
+      let message = reply?["msg"] as? String
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          self.flashStarting = false
+          if !ok { self.registerRefused = message?.isEmpty == false ? message! : "the daemon didn't answer" }
           self.poll()
         }
       }
