@@ -124,4 +124,12 @@ extension AppUpdater: SUVersionDisplay {
     inOutBundleDisplayVersion.pointee = MainActor.assumeIsolated { Self.version } as NSString
     return update.displayVersionString
   }
+
+  /// "You're up to date": ttycat 0.2.0-dev.2 is the newest.
+  @objc(formatBundleDisplayVersion:withBundleVersion:matchingUpdate:)
+  nonisolated func formatBundleDisplayVersion(
+    _ bundleDisplayVersion: String, withBundleVersion bundleVersion: String, matchingUpdate: SUAppcastItem?
+  ) -> String {
+    MainActor.assumeIsolated { Self.version }
+  }
 }
