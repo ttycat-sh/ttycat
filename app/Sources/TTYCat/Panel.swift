@@ -526,6 +526,21 @@ private struct SetupPage: View {
 
       if m.boardMatters { FirmwareSection() }
 
+      Section(title: "App") {
+        Fact(name: "ttycat", value: AppUpdater.version, good: true)
+        if let ready = m.appUpdateReady {
+          Fact(name: "Newer app", value: ready, good: false)
+          PixelButton(title: "Install ttycat \(ready)", loud: true, action: m.appUpdater.check)
+          Text("Downloads it, checks it's ttycat's, and opens again as the new version. Agents keep running.")
+            .font(Pixel.small).foregroundStyle(Palette.muted).frame(maxWidth: .infinity, alignment: .leading)
+        } else if m.appUpdater.isActive {
+          PixelButton(title: "Check for app updates", action: m.appUpdater.check)
+        } else {
+          Text("A build of your own: it doesn't update itself.")
+            .font(Pixel.small).foregroundStyle(Palette.muted).frame(maxWidth: .infinity, alignment: .leading)
+        }
+      }
+
       Section(title: "Daemon") {
         Fact(name: "Daemon", value: daemonText, good: m.status != nil)
         Fact(name: "Board", value: m.boardMatters ? boardText : "none, and that's fine", good: m.boardConnected)
@@ -556,7 +571,7 @@ private struct SetupPage: View {
   private func updatesDetail(_ updates: UpdatesInfo) -> String {
     guard updates.check else { return "off: nothing is sent to ttycat" }
     if !updates.error.isEmpty { return "couldn't reach ttycat: tries again within the hour" }
-    return "on start and every hour: the board's model and versions only"
+    return "the board's model and versions, and this app's, only"
   }
 
   private var daemonText: String {

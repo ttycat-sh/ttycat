@@ -37,6 +37,8 @@ final class TTYCatModel: ObservableObject {
   @Published var maxPanelHeight: CGFloat = 2000  // how far down the screen it can go
   @Published var firmwareImage = FirmwareImage.inApp()
   @Published var flashStarting = false
+  @Published var appUpdateReady: String?  // a newer app Sparkle found on its schedule: Setup offers it
+  let appUpdater = AppUpdater()
   @Published var registerRefused: String?  // why the folder chosen in Setup wasn't taken, shown under its button
   @Published var firmwarePlan = FirmwarePlan.notConnected
 
@@ -96,6 +98,7 @@ final class TTYCatModel: ObservableObject {
     alerts.start(model: self)
     for start in Extensions.started { start(self) }
     refreshPermission()  // never asks by itself: see turnOnNotifications
+    startAppUpdates()
     poll()
     // Common modes: these must keep going while the panel's open.
     let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
@@ -548,7 +551,21 @@ final class TTYCatModel: ObservableObject {
   }
 
   /// Whether the daemon asks ttycat's update server what's new: on start, then every hour.
+  /// The app's own updates, in a release: the same setting as the board's, kept by the daemon.
+  private func startAppUpdates() {
+    appUpdater.ready = { [weak self] version in
+      guard let self else { return }
+      if let version, version != self.appUpdateReady { self.show("ttycat \(version) is ready to install: Setup > App") }
+      self.appUpdateReady = version
+    }
+    let setting = URL(fileURLWithPath: NSHomeDirectory() + "/.ttycat/updates.json")
+    let check = (try? Data(contentsOf: setting))
+      .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }?["check"] as? Bool ?? true
+    appUpdater.start(checking: check)
+  }
+
   func setUpdateCheck(_ on: Bool) {
+    appUpdater.setChecking(on)
     DispatchQueue.global(qos: .userInitiated).async {
       _ = Ctl.request(["t": "updates", "check": on], timeout: 3)
       DispatchQueue.main.async { MainActor.assumeIsolated { self.poll() } }

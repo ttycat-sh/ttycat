@@ -11,11 +11,13 @@ APP="$HERE/build/ttycat.app"
 cd "$HERE"
 # An extended build adds its flags and its sources: see Extensions.swift.
 swift build -c release ${TTYCAT_SWIFT_ARGS:-}
-BIN=$(swift build -c release ${TTYCAT_SWIFT_ARGS:-} --show-bin-path)/TTYCat
+BINDIR=$(swift build -c release ${TTYCAT_SWIFT_ARGS:-} --show-bin-path)
 
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/ttycat"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$APP/Contents/Frameworks"
+cp "$BINDIR/TTYCat" "$APP/Contents/MacOS/ttycat"
+# Sparkle, which a release updates itself with (AppUpdater.swift). Copied as it is, links and all.
+ditto "$BINDIR/Sparkle.framework" "$APP/Contents/Frameworks/Sparkle.framework"
 cp "$ROOT"/tools/fonts/*.ttf "$ROOT"/tools/fonts/OFL-*.txt "$APP/Contents/Resources/"
 
 # The firmware this app can put on the board. It's only ever the last build: firmware/ isn't built here.
@@ -58,8 +60,18 @@ cp "$ROOT"/daemon/*.py "$ROOT/daemon/agent_rules.json" "$ROOT/daemon/agent_rules
 # daemon gets build.json, and ignores the developer overrides; the keys it trusts are that environment's.
 # Without one it's a developer's build, 0.0.0. See tools/app_build.py.
 INFO=$(python3 "$ROOT/tools/app_build.py" "$APP/Contents/Resources/daemon" ${TTYCAT_VERSION:+"$TTYCAT_VERSION"})
-SHORT=${INFO% *}
-BUILD=${INFO#* }
+read -r SHORT BUILD SPARKLE_KEY <<EOF_INFO
+$INFO
+EOF_INFO
+# A release checks for a new app every 4 hours, and installs only what its environment's app update key
+# signed. A developer's build has no key, so Sparkle never starts in it.
+SPARKLE=""
+if [ "$SPARKLE_KEY" != "-" ]; then
+  SPARKLE="<key>SUPublicEDKey</key><string>$SPARKLE_KEY</string>
+  <key>SUEnableAutomaticChecks</key><true/>
+  <key>SUScheduledCheckInterval</key><integer>14400</integer>
+  <key>SUEnableSystemProfiling</key><false/>"
+fi
 cp "$ROOT/LICENSE" "$ROOT/NOTICE" "$ROOT/THIRD_PARTY.md" "$APP/Contents/Resources/"
 # Anything an extended build adds to the app, such as a daemon plugin: see daemon/plugins.py.
 if [ -n "${TTYCAT_EXTRA_RESOURCES:-}" ]; then
@@ -88,6 +100,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
   <key>CFBundleShortVersionString</key><string>$SHORT</string>
   <key>CFBundleVersion</key><string>$BUILD</string>
   <key>TTYCatVersion</key><string>${TTYCAT_VERSION:-developer build}</string>
+  $SPARKLE
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>LSMultipleInstancesProhibited</key><true/>
@@ -120,8 +133,16 @@ find "$APP/Contents/Resources" -type f | while read -r file; do
     *Mach-O*) codesign --force --options runtime "$STAMP" --sign "${IDENTITY:--}" "$file" ;;
   esac
 done
+# Sparkle's helpers, each on its own and never with --deep, as Sparkle's documentation says; the
+# downloader keeps its entitlements. Then the framework, then the app around it all.
+SPARKLE_B="$APP/Contents/Frameworks/Sparkle.framework/Versions/B"
+for part in XPCServices/Installer.xpc XPCServices/Downloader.xpc Autoupdate Updater.app; do
+  if [ "$part" = XPCServices/Downloader.xpc ]; then KEEP=--preserve-metadata=entitlements; else KEEP=; fi
+  codesign --force --options runtime "$STAMP" $KEEP --sign "${IDENTITY:--}" "$SPARKLE_B/$part"
+done
+codesign --force --options runtime "$STAMP" --sign "${IDENTITY:--}" "$APP/Contents/Frameworks/Sparkle.framework"
 codesign --force --options runtime "$STAMP" --sign "${IDENTITY:--}" "$APP"
-codesign --verify --strict "$APP"
+codesign --verify --strict --deep "$APP"
 SIGNED=${TTYCAT_SIGN_NAME:-${IDENTITY:-ad hoc}}
 echo "built: $APP (${TTYCAT_VERSION:-developer build}, signed: $SIGNED, $(du -sh "$APP" | cut -f1))"
 

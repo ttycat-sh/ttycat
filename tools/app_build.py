@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """What app/build.sh puts into the app's daemon folder, and the app's version for Info.plist:
 
-  app_build.py DAEMON_DIR [VERSION]     prints "SHORT BUILD"
+  app_build.py DAEMON_DIR [VERSION]     prints "SHORT BUILD SPARKLE_KEY"
 
 With a VERSION, from a release's tag, it's a release: X.Y.Z is prod, X.Y.Z-dev.N is dev.
   build.json          the daemon then ignores TTYCAT_TRUST_KEY and TTYCAT_UPDATES_URL (daemon/build_info.py)
   release_keys.json   prod's keys; a dev build trusts dev's too (daemon/release_keys_dev.json)
 BUILD is what Sparkle compares: it always grows, and a dev build counts below the release it leads to.
-Without a VERSION it's a developer's build: 0.0.0, build 0, no build.json, prod's keys.
+SPARKLE_KEY is the environment's app update key, for SUPublicEDKey: Sparkle installs only what it signed.
+build.json also names the feed Sparkle asks (AppUpdater.swift in the app).
+Without a VERSION it's a developer's build: 0.0.0, build 0, no build.json, prod's keys, and "-" for the
+key, so it never updates itself.
 """
 import json
 import re
@@ -16,7 +19,12 @@ from pathlib import Path
 
 DAEMON = Path(__file__).resolve().parents[1] / "daemon"
 VERSION = re.compile(r"([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})(?:-dev\.([0-9]{1,3}))?")
-UPDATES = {"prod": "https://api.ttycat.sh/v1/updates", "dev": "https://api.dev.ttycat.sh/v1/updates"}
+API = {"prod": "https://api.ttycat.sh", "dev": "https://api.dev.ttycat.sh"}
+UPDATES = {env: base + "/v1/updates" for env, base in API.items()}
+APPCAST = {env: base + "/v1/appcast" for env, base in API.items()}
+# The app update keys' public halves (tools/release_key.py made them; the secrets are in ttycat-pro's CI).
+SPARKLE_KEYS = {"dev": "8DB/ldhe8apVwMocLZSLn4Wrl3io8gspESHdTUJz25g=",   # id 75be9ab5602bd56e
+                "prod": "vsxpLSGZ3ThdF+xkfSIbLGi7KCY7QbwYNxgnkLG4OTs="}  # id 13c5031939d84efd
 RELEASED = 999  # the dev builds of X.Y.Z are 1 to 998, and X.Y.Z itself is above them all
 
 
@@ -52,12 +60,13 @@ def main(argv: list[str]) -> int:
             print(f"app_build.py: {e}", file=sys.stderr)
             return 1
         (out / "build.json").write_text(json.dumps(
-            {"release": True, "env": env, "version": argv[2], "build": build, "updates": UPDATES[env]}, indent=1) + "\n")
+            {"release": True, "env": env, "version": argv[2], "build": build, "updates": UPDATES[env],
+             "appcast": APPCAST[env]}, indent=1) + "\n")
     else:
         short, build, env = "0.0.0", 0, None
         (out / "build.json").unlink(missing_ok=True)
     (out / "release_keys.json").write_text(json.dumps(keys(env), indent=1) + "\n")
-    print(short, build)
+    print(short, build, SPARKLE_KEYS[env] if env else "-")
     return 0
 
 
