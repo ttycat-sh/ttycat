@@ -97,7 +97,18 @@ iconutil -c icns -o "$APP/Contents/Resources/AppIcon.icns" "$ICONSET"
 
 # Your Apple Development certificate if there is one; otherwise signed for this Mac only.
 # release.sh passes a Developer ID instead. Hardened either way, so a test build behaves like a release.
-IDENTITY=${TTYCAT_SIGN_IDENTITY:-$(security find-identity -v -p codesigning | awk -F'"' '/Apple Development/ {print $2; exit}')}
+# An Apple Development certificate of ttycat's own team, never another team's, such as an employer's.
+# Its name ends in the person's ID, so the team is read from the certificate itself.
+TEAM=${TTYCAT_TEAM_ID:-D4N534TM9Q}
+own_development_identity() {
+  security find-identity -v -p codesigning | awk -F'"' '/Apple Development/ {print $2}' | while read -r name; do
+    if security find-certificate -c "$name" -p | openssl x509 -noout -subject 2>/dev/null | grep -Eq "OU *= *$TEAM([,/]|$)"; then
+      echo "$name"
+      break
+    fi
+  done
+}
+IDENTITY=${TTYCAT_SIGN_IDENTITY:-$(own_development_identity)}
 STAMP=${TTYCAT_SIGN_TIMESTAMP:---timestamp=none}
 # Everything that runs is signed on its own, from the inside out.
 find "$APP/Contents/Resources" -type f | while read -r file; do

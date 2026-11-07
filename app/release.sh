@@ -12,8 +12,11 @@ APP="$HERE/build/ttycat.app"
 DMG="$HERE/build/ttycat.dmg"
 
 [ -d "$HERE/.vendor/python" ] || { echo "run app/vendor.sh first: a release can't rely on the buyer's Python" >&2; exit 1; }
-IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/ {print $2; exit}')
-[ -n "$IDENTITY" ] || { echo "no Developer ID Application certificate in the keychain" >&2; exit 1; }
+# ttycat's own Apple developer team, and no other, even with other teams' certificates in the keychain.
+# Sparkle also refuses an update signed by another team than the app it replaces.
+TEAM=${TTYCAT_TEAM_ID:-D4N534TM9Q}
+IDENTITY=$(security find-identity -v -p codesigning | awk -F'"' -v team="($TEAM)" '/Developer ID Application/ && index($2, team) {print $2; exit}')
+[ -n "$IDENTITY" ] || { echo "no Developer ID Application certificate for team $TEAM in the keychain" >&2; exit 1; }
 
 FIRMWARE="$(dirname "$HERE")/firmware/build-release"
 IMAGE="$(dirname "$HERE")/firmware/build-release-image"
