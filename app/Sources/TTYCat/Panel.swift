@@ -687,7 +687,8 @@ private struct FirmwareSection: View {
   @ViewBuilder private func coreChoice(_ core: CoreInfo?) -> some View {
     if let core, core.registered {
       if let available = core.available {
-        Fact(name: "Core", value: "\(core.core ?? "unknown"), \(available) available", good: false)
+        Fact(name: "Built from core", value: core.core ?? "unknown", good: false)
+        Fact(name: "Newer core", value: available, good: false)
         if core.blocked.isEmpty {
           PixelButton(title: "Update core to \(available)", loud: true, enabled: !m.flashBusy) { m.updateCore() }
           note("Builds it on this Mac with your board's own folder, then writes it. Takes a few minutes. If the new build doesn't start, the one it runs now goes back on.")
@@ -695,7 +696,7 @@ private struct FirmwareSection: View {
           note(core.blocked, warn: true)
         }
       } else if let version = core.core {
-        Fact(name: "Core", value: "\(version), up to date", good: true)
+        Fact(name: "Built from core", value: "\(version), the newest", good: true)
       }
       if core.state == "failed", !core.msg.isEmpty, !m.flashBusy {
         note("Last update: \(core.msg)", warn: true)
