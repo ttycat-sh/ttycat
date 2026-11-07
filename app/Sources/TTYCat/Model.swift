@@ -663,6 +663,47 @@ final class TTYCatModel: ObservableObject {
 
   func refreshLogin() { loginState = SMAppService.mainApp.status }
 
+  /// Everything ttycat added to this Mac taken away, after asking: its hook in Claude's settings, its
+  /// login item, what an extension added, and if you choose, ~/.ttycat with Bit in it. Then it quits
+  /// and moves itself to the Trash. The board keeps its firmware.
+  func uninstall() {
+    NSApp.activate()
+    let alert = NSAlert()
+    alert.messageText = "Uninstall ttycat?"
+    alert.informativeText = "It takes its hook out of Claude's settings and removes its login item, then quits "
+      + "and moves itself to the Trash. Claude asks in the terminal again, as before. The board keeps its firmware."
+    let everything = NSButton(checkboxWithTitle: "Also delete Bit, its level, and ttycat's settings", target: nil, action: nil)
+    everything.state = .off
+    alert.accessoryView = everything
+    alert.addButton(withTitle: "Uninstall")
+    alert.addButton(withTitle: "Cancel")
+    alert.buttons[0].hasDestructiveAction = true
+    guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+    // Only changes Claude's settings if the hook is there: someone without Claude has none to change.
+    let found = supervisor.hook("status")
+    let removed = found.ok && !found.installed ? found : supervisor.hook("remove")
+    for uninstalling in Extensions.uninstalling { uninstalling(self) }
+    try? SMAppService.mainApp.unregister()
+    stopAlerts()
+    supervisor.stopForQuit()
+    if !removed.ok {
+      // Never leave someone with a hook they didn't know about: the app stays, so they can try again.
+      let failed = NSAlert()
+      failed.messageText = "ttycat couldn't change Claude's settings"
+      failed.informativeText = "Its hook is still in ~/.claude/settings.json, so ttycat stays installed. Open Setup to try again."
+      failed.runModal()
+      restartDaemon()
+      return
+    }
+    if everything.state == .on {
+      try? FileManager.default.removeItem(atPath: NSHomeDirectory() + "/.ttycat")
+      if let id = Bundle.main.bundleIdentifier { UserDefaults.standard.removePersistentDomain(forName: id) }
+    }
+    try? FileManager.default.trashItem(at: Bundle.main.bundleURL, resultingItemURL: nil)  // not from a disk image
+    exit(0)  // not NSApp.terminate: nothing left to stop, and nothing should write its settings back
+  }
+
   func setStartAtLogin(_ on: Bool) {
     do {
       if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }

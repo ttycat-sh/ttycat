@@ -17,6 +17,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     source.setEventHandler { NSApp.terminate(nil) }
     source.resume()
     termSource = source
+    MainActor.assumeIsolated {
+      if AppMover.offerAtLaunch() { return }  // it opens again from Applications
+      // The first time, a menu bar app is only an icon: open the panel, so the welcome is seen.
+      if !model.welcomed {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+          MainActor.assumeIsolated { self?.panel?.open() }
+        }
+      }
+    }
   }
 
   func applicationWillTerminate(_ notification: Notification) {
@@ -66,7 +75,7 @@ enum Preview {
     model.hookInstalled = scene == "welcome" ? false : true
     model.welcomed = scene != "welcome"
     model.boardEverSeen = scene != "welcome" && scene != "noboard"
-    model.loginState = .enabled
+    model.loginState = scene == "welcome" ? .notRegistered : .enabled
     model.notifyPermission = scene == "setup-denied" ? .denied : scene == "setup-new" || scene == "welcome" ? .notDetermined : .authorized
     let working = { (i: Int, project: String, detail: String) in
       AgentRow(id: "w\(i)", s: "working", a: "CC", n: "Claude", p: project, d: detail, age: Double(30 + i * 40))

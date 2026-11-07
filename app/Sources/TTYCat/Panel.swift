@@ -158,15 +158,26 @@ private struct AgentsPage: View {
   }
 }
 
-/// The first time: what it does by itself, and the two things it needs your click for.
+/// The first time: what it does by itself, and the things it needs your click for. Each is asked here
+/// once, says why, and can be changed in Setup.
 private struct WelcomeCard: View {
   @EnvironmentObject var m: TTYCatModel
 
   var body: some View {
     VStack(alignment: .leading, spacing: 6) {
       Caps("Welcome", color: Palette.white)
-      Text("Agents running in any terminal show up here by themselves. Two things need your OK:")
+      Text("Agents running in any terminal show up here by themselves. These need your OK:")
         .font(Pixel.small).foregroundStyle(Palette.muted).fixedSize(horizontal: false, vertical: true)
+      Toggled(
+        title: "Start at login", on: m.loginState == .enabled,
+        detail: m.loginState == .requiresApproval ? "needs your OK in System Settings" : "so it's watching before your first agent starts"
+      ) {
+        if m.loginState == .requiresApproval {
+          SMAppService.openSystemSettingsLoginItems()
+        } else {
+          m.setStartAtLogin(m.loginState != .enabled)
+        }
+      }
       Toggled(
         title: "Answer Claude's prompts here", on: m.hookInstalled == true,
         detail: "adds one hook to Claude's settings", enabled: m.hookInstalled != nil && !m.hookBusy
@@ -528,7 +539,11 @@ private struct SetupPage: View {
 
       Section(title: "App") {
         Fact(name: "ttycat", value: AppUpdater.version, good: true)
-        if let ready = m.appUpdateReady {
+        if AppMover.shouldOffer {
+          Text("It can only update itself from Applications.")
+            .font(Pixel.small).foregroundStyle(Palette.orange).frame(maxWidth: .infinity, alignment: .leading)
+          PixelButton(title: "Move to Applications", loud: true) { AppMover.move() }
+        } else if let ready = m.appUpdateReady {
           Fact(name: "Newer app", value: ready, good: false)
           PixelButton(title: "Install ttycat \(ready)", loud: true, action: m.appUpdater.check)
           Text("Downloads it, checks it's ttycat's, and opens again as the new version. Agents keep running.")
@@ -559,6 +574,7 @@ private struct SetupPage: View {
       PixelButton(title: "Quit ttycat", enabled: !m.flashBusy) { NSApp.terminate(nil) }
       Text(quitNote).font(Pixel.small).foregroundStyle(Palette.muted).lineLimit(2)
         .frame(maxWidth: .infinity, alignment: .leading)
+      PixelButton(title: "Uninstall ttycat", enabled: !m.flashBusy, action: m.uninstall)
     }
     .onAppear {
       m.refreshHook()

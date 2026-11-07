@@ -44,6 +44,10 @@ app/build.sh install    # also copies it to /Applications and starts it
 
 **Setup** in the panel has start at login (off until you tick it; use the copy in /Applications), the permission hook, notifications, other machines and the daemon's log.
 
+**The first time**, the panel opens by itself, and asks for start at login, the permission hook and notifications, each once. A release opened from its disk image or from Downloads first offers to move itself into Applications: it can only update itself from there.
+
+**Uninstalling:** Setup > Uninstall ttycat takes its hook out of Claude's settings and removes its login item, then moves the app to the Trash. Ticking the box also deletes `~/.ttycat`, with Bit in it. An app dragged to the Trash instead leaves a hook that does nothing: Claude asks in the terminal, as before.
+
 - **Notifications** say when an agent needs you, and when one finishes after 30 s or more of work. Clicking one opens the panel on that prompt, or the terminal if there's nothing to answer there.
   - A prompt waits 3 s, so one you answer straight away never shows a banner. Nothing is posted for the agent whose pane is focused in your terminal while that terminal is in front and you've touched the Mac in the last 2 minutes, nor while the panel is open. A prompt is posted when you move away; a finished turn isn't.
   - Allow is never on a notification. A prompt's notification offers Deny, and a click opens the panel to read and answer it. A single question with one answer gets its options and "Type an answer" as buttons. Several questions, or pick-any, open the panel.

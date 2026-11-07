@@ -16,6 +16,8 @@ enum Extensions {
   static var setupSections: [@MainActor () -> AnyView] = []
   static var started: [@MainActor (TTYCatModel) -> Void] = []
   static var polled: [@MainActor (TTYCatModel) -> Void] = []  // once a second
+  /// Uninstalling: take away what the extension added outside the app. Run before the daemon stops.
+  static var uninstalling: [@MainActor (TTYCatModel) -> Void] = []
   static var preview: (@MainActor (String, TTYCatModel) -> Void)?
 
   /// Called once, before anything starts. A build with extensions compiles its own in.
