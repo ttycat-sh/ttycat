@@ -1,7 +1,9 @@
-# Built by app/build.sh and swift
-app/build/
-app/.build/
-app/.swiftpm/
+# ESP-IDF
+build/
+build-*/
+managed_components/
+sdkconfig
+sdkconfig.old
 
 # Python
 __pycache__/
@@ -9,9 +11,3 @@ __pycache__/
 
 # macOS
 .DS_Store
-
-app/.vendor/
-
-# An extended build's sources, copied in for the length of its build: see Extensions.swift.
-app/Sources/TTYCat/_extra/
-app/Tests/TTYCatTests/_extra/

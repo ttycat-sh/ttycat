@@ -21,10 +21,11 @@ These protect the person from their own agents, including you. Keep them even if
 8. **Their own name on their own device.** The licence doesn't cover the name "ttycat" or the logo. A fork can say "works with ttycat".
 
 ## Where things are
-- `firmware/main`: what every board shares. `ui.c`: every screen. `gfx.h`: drawing. `link.c`: talking to the Mac. `model.h`: what the Mac sends. `board.h`: all it needs from a board.
-- `firmware/boards`: ttycat's own boards, one folder each. Nothing about particular hardware belongs anywhere else. People's own boards live in folders of their own, outside this repo, and never come into it: see `firmware/boards/README.md`. `firmware/main/board.h` is a promise to those folders, numbered `BOARD_API`: don't change it lightly.
+- `main`: what every board shares. `ui.c`: every screen. `gfx.h`: drawing. `link.c`: talking to the Mac. `model.h`: what the Mac sends. `board.h`: all it needs from a board.
+- `boards`: ttycat's own boards, one folder each. Nothing about particular hardware belongs anywhere else. People's own boards live in folders of their own, outside this repo, and never come into it: see `boards/README.md`. `main/board.h` is a promise to those folders, numbered `BOARD_API`: don't change it lightly.
 - `docs/PROTOCOL.md`: the messages between the Mac and a device.
 - `tools/preview/preview.py`: see a screen as a PNG, with no board and no ESP-IDF.
+- `daemon/`: the Mac's side, [ttycat-daemon](https://github.com/ttycat-sh/ttycat-daemon), as a submodule. Check it out once with `git submodule update --init daemon`: the skills run `daemon/ttycatd.py` to talk to the board and flash it, and `daemon/tools/firmware_bundle.py` to pack a build. The menu bar app is [ttycat-app](https://github.com/ttycat-sh/ttycat-app).
 
 ## Skills
 In `.claude/skills`. If your tool doesn't load them by itself, read the one that fits before starting.

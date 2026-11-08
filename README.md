@@ -1,103 +1,30 @@
 # ttycat
 
-A touch screen on the desk for your coding agents, with or without [herdr](https://herdr.dev): what every coding agent is doing, and Allow or Deny for the ones waiting on you. It runs on the Waveshare ESP32-C5-Touch-LCD-2.8 (240x320, capacitive touch) and implements the "ttycat UI" design.
+A touch screen on the desk for your coding agents, with or without [herdr](https://herdr.dev): what every coding agent is doing, and Allow or Deny for the ones waiting on you. It runs on the Waveshare ESP32-C5-Touch-LCD-2.8 (240x320, capacitive touch), and other boards can be added.
 
-```
-firmware/    ESP-IDF firmware: main/ draws the screens and talks to the Mac, boards/ has one folder per board
-daemon/      Mac daemon, Python standard library only: herdr and Claude Code <-> USB serial
-app/         menu bar app (Swift): runs the daemon and shows what it knows
-tools/       font generator and the design's fonts (OFL licensed)
-```
+This is its firmware. ttycat is three open-source repos:
 
-## Run it
-
-With the board on USB and herdr running:
+| Repo | What |
+|---|---|
+| **ttycat-firmware** | this: the ESP-IDF firmware. `main/` draws the screens and talks to the Mac, `boards/` has one folder per board, `docs/PROTOCOL.md` is what the Mac and a device say |
+| [ttycat-daemon](https://github.com/ttycat-sh/ttycat-daemon) | the Mac's side: finds the agents, carries answers back, and flashes the board. Here as the `daemon/` submodule |
+| [ttycat-app](https://github.com/ttycat-sh/ttycat-app) | the menu bar app, which runs the daemon |
 
 ```sh
-python3 daemon/ttycatd.py run
+git clone --recurse-submodules https://github.com/ttycat-sh/ttycat-firmware
 ```
-
-The board leaves its "waiting for Mac" screen within a second or two. The daemon has to stay running; if it stops, the board goes back to that screen.
-
-For Allow and Deny, add the permission hook to `~/.claude/settings.json` once. Running sessions pick it up without a restart. It adds one entry, and saves the previous file as `settings.json.ttycat-backup`:
-
-```sh
-python3 daemon/ttycatd.py hook install    # or: remove, status
-```
-
-Run this way, the hook runs from this folder, so install it again if the project moves. The app's own hook doesn't have that problem.
-
-To see every screen without touching real sessions, use the design's sample data. Nothing is answered in this mode:
-
-```sh
-python3 daemon/ttycatd.py demo
-```
-
-## The menu bar app
-
-`app/` is a SwiftUI menu bar app in the board's look. It keeps the daemon running, restarts it if it dies, and shows every agent, the board's link and Bit's stats. You can answer prompts in it, and click a row to see what that agent has been doing. It needs macOS 14 and the command line tools, not Xcode:
-
-```sh
-app/build.sh            # builds app/build/ttycat.app
-app/build.sh install    # also copies it to /Applications and starts it
-```
-
-**Setup** in the panel has start at login (off until you tick it; use the copy in /Applications), the permission hook, notifications, other machines and the daemon's log.
-
-**The first time**, the panel opens by itself, and asks for start at login, the permission hook and notifications, each once. A release opened from its disk image or from Downloads first offers to move itself into Applications: it can only update itself from there.
-
-**Uninstalling:** Setup > Uninstall ttycat takes its hook out of Claude's settings and removes its login item, then moves the app to the Trash. Ticking the box also deletes `~/.ttycat`, with Bit in it. An app dragged to the Trash instead leaves a hook that does nothing: Claude asks in the terminal, as before.
-
-- **Notifications** say when an agent needs you, and when one finishes after 30 s or more of work. Clicking one opens the panel on that prompt, or the terminal if there's nothing to answer there.
-  - A prompt waits 3 s, so one you answer straight away never shows a banner. Nothing is posted for the agent whose pane is focused in your terminal while that terminal is in front and you've touched the Mac in the last 2 minutes, nor while the panel is open. A prompt is posted when you move away; a finished turn isn't.
-  - Allow is never on a notification. A prompt's notification offers Deny, and a click opens the panel to read and answer it. A single question with one answer gets its options and "Type an answer" as buttons. Several questions, or pick-any, open the panel.
-  - Buttons don't work from a locked screen, and a click within 600 ms of a notification appearing doesn't count. A notification goes away once its prompt is settled anywhere, and when the app quits.
-  - Commands, questions and the agent's last words appear in Notification Center, so they can be seen by anyone looking at the screen. macOS's "Show previews" setting hides them.
-  - The app asks macOS for permission only when you click **Turn on notifications** in Setup. If it was refused, it's System Settings > Notifications > ttycat.
-  - macOS holds notifications back during a Focus, without any error, unless you allow this app in that Focus. Setup always says so, because this build can't tell whether a Focus is on. Time Sensitive wouldn't get through either: it needs an entitlement this build doesn't have, and macOS ignores it without one.
-- **Answers work as they do on the board.** Allow, Deny and questions (typed answers here can be up to 1000 characters and aren't limited to ASCII) go only to the hook process that asked, and only for the exact prompt on screen. Buttons wait 600 ms after a prompt appears, and a new prompt waits its turn instead of replacing the one on the card.
-- **Anything running as you can reach the daemon's socket,** so a program you run could answer a prompt. That was already true of `ttycatd.py tap` and `herdr agent send-keys`.
-- **The app carries what it needs:** the daemon, Python and esptool, so a Mac needs nothing installed. The hook points into the app, and repairs itself at launch if the app has moved. `app/vendor.sh` prepares Python and esptool (pinned, from GitHub and PyPI), once. Without it the app still builds and uses the system's Python, for working on it. `TTYCAT_DAEMON_DIR=daemon` runs a build from this checkout instead. Apple silicon only, for now.
-- **The board is optional.** Nothing mentions it until one has been connected.
-- **A release** is `TTYCAT_VERSION=X.Y.Z app/release.sh`: signed with your Developer ID, in a disk image, notarized by Apple. See the script for the one-time setup. A version ending in `-dev.N` is a dev release, which trusts dev's release key too and asks dev's update server. A release ignores `TTYCAT_TRUST_KEY` and `TTYCAT_UPDATES_URL`, which only work in a developer's build (`daemon/build_info.py`). A release updates itself with Sparkle (`app/Sources/TTYCat/AppUpdater.swift`), from its update server's `/v1/appcast`, and installs only a disk image signed by its environment's app update key (`tools/release_app.py`). A developer's build never does. Licenses of what it carries are in `THIRD_PARTY.md`.
-- **The panel is its own window, not SwiftUI's `MenuBarExtra`,** which grows its window but never shrinks it (`StatusPanel.swift`). Its top stays under the icon, its height follows the page, and a page too tall for the screen scrolls under the tabs. It takes the keyboard without making this the active app, like Spotlight, so what you were in stays in front. A click elsewhere, Esc, or switching app closes it. Its content is built new on each open, so a prompt's buttons always get their full delay.
-- **One daemon at a time.** A second one exits with status 3. If one's already running, from a terminal say, the app uses it, and leaves it running when it quits. One the app started stops with it.
-- Plain `@State` doesn't build here: in current SDKs it's a macro, and its plugin comes only with Xcode. Panel.swift has a small stand-in.
-- To check the look without opening the menu: `"app/build/ttycat.app/Contents/MacOS/ttycat" --preview out.png needs` (`busy`, `needs`, `diff`, `long`, `question`, `questions`, `terminal`, `detail`, `done`, `idle`, `setup`, `setup-new`, `setup-denied`, `setup-short`, `welcome`, `noboard`, `pet`, `pet-asleep`, `pet-needs`, `pet-level`, `pet-hello`, `pet-birthday`, `fw-update`, `fw-write`, `fw-back`, `fw-fail`, `fw-unknown`, `fw-custom`, `fw-custom-on`, `stopped`, `unplugged`).
-
-## Where agents come from
-
-| Where | Which agents | Its state | Answer from the board or app |
-|---|---|---|---|
-| **In herdr** | All the agents it supports | Read from each agent's screen by herdr | Claude Code, through the hook |
-| **Claude Code in any other terminal** | Claude Code | Claude's own record in `~/.claude/sessions/<pid>.json` | Through the same hook |
-| **Any other agent in tmux** | Those herdr has rules for: Codex, OpenCode, Pi, Gemini and others | Read from its screen, by herdr's rules | No: its prompt is shown, and answered in its terminal |
-| **The Codex app** | Its threads, active in the last 30 minutes | Codex's own records in `~/.codex` | No |
-| **Codex in any other terminal** | Codex | The same records, if it's the only Codex in its folder | No |
-| **Any other agent in any other terminal** | OpenCode, Gemini and others, by process name | None: it shows as running, "state unknown" | No |
-
-herdr isn't required, on this Mac or on other machines. A session outside it just shows up, with nothing to install; the hook (Setup > Answer prompts on the board) is what lets you answer Claude from here. Anything inside herdr is left to herdr, so nothing appears twice. tmux inside a herdr pane counts as outside it, since herdr can't see in.
-
-**What a screen means** comes from [herdr](https://github.com/herdrdev/herdr)'s detection rules (`daemon/agent_rules.json`, Apache-2.0, `daemon/agent_rules.LICENSE`) and a port of its engine (`daemon/screen_rules.py`), checked rule by rule against herdr's own `agent explain`. Update them with `tools/import_agent_rules.py HERDR_REPO`. Unlike herdr, they don't update themselves, so a new version of an agent can show the wrong state until they're refreshed. Unknown screens read as idle, as in herdr, so an unusual prompt can look idle. No keys are ever sent to these agents.
-
-- **Which process is the agent** is worked out as herdr does: the terminal's foreground job, its leader first, by name, seeing through runtimes such as `node`, and never from an argument that only mentions one. Background services don't count.
-- **An agent showing "state unknown" may be waiting on you.** Nothing can read another terminal's screen, so this can't tell. For its real state and prompts, run it in tmux or herdr.
-- **Codex's log can't tell waiting for approval from a long command.** A thread that's able to ask says "may be waiting for approval" after 20 quiet seconds with a tool call open. In tmux, its screen tells them apart.
-- **Claude's record isn't a documented interface.** It's read loosely (`daemon/discovery.py`): anything unfamiliar means fewer rows, never a wrong answer. If it changes in a Claude update, a Claude session outside herdr drops to "state unknown" and its prompts stay in the terminal. herdr sessions aren't affected. Nor is Codex's database or log documented (`daemon/codex_threads.py`), and they're read the same way, read-only.
-- **Open in terminal** brings the session's terminal app forward, and the right pane under tmux. It can't pick the tab in other terminals. On another machine, only a herdr pane can be opened from here. A Codex app thread opens in the app, through its `codex://threads/` link.
-- **Notifications can't tell which tab you're on** outside herdr, so a banner can appear for the session you're already looking at.
 
 ## Flash the firmware
 
 **From the app:** Setup > Firmware > **Update board**. It takes about 10 seconds, and the board has to say it's running the new version before the update counts as done. Agents keep running meanwhile; answer prompts in the panel or the terminal until the board's back.
 
-- The app carries the firmware that was built when `app/build.sh` ran, so build the firmware first. The version comes from the binary, and updates are offered only for a board on an older one, so **bump `FW_VERSION` in `firmware/main/model.h` for every release**. A changed build with the same number won't be offered.
-- **Only a release says it's ttycat's firmware, and only signed.** `tools/release_firmware.sh` builds it into `firmware/build-release`, and signs its image and the core's source with the key in `TTYCAT_SIGNING_KEY` (`tools/release_key.py` makes one). The daemon writes firmware that says it's ttycat's own only from an image signed by a key in `daemon/release_keys.json`, whether it comes in the app or from a server. `app/release.sh` won't go without all of it. Anything else built from source says something like `custom-0.9.1-a1b2c3d4` (set `FW_LABEL` for your own first word), where the end comes from the source, so every change has a new name.
+- The app carries the firmware that was built when ttycat-app's `build.sh` ran, so build the firmware first. The version comes from the binary, and updates are offered only for a board on an older one, so **bump `FW_VERSION` in `main/model.h` for every release**. A changed build with the same number won't be offered.
+- **Only a release says it's ttycat's firmware, and only signed.** `tools/release_firmware.sh` builds it into `build-release`, and signs its image and the core's source with the key in `TTYCAT_SIGNING_KEY` (`daemon/tools/release_key.py` makes one). The daemon writes firmware that says it's ttycat's own only from an image signed by a key in its `release_keys.json`, whether it comes in the app or from a server. ttycat-app's `release.sh` won't go without all of it. Anything else built from source says something like `custom-0.9.1-a1b2c3d4` (set `FW_LABEL` for your own first word), where the end comes from the source, so every change has a new name.
 - **A tag is a release.** `.github/workflows/release.yml` runs on `vX.Y.Z`, for prod, and on `vX.Y.Z-dev.N`, for dev. `FW_VERSION` must say `X.Y.Z`.
   1. It builds the official board's firmware in Espressif's ESP-IDF image, pinned by digest.
   2. It signs that firmware and the core's source with the environment's key.
   3. It uploads them to the releases bucket, never replacing a file.
-  4. It offers them to Macs through the update server, with `tools/publish_release.py`. For prod, it also attaches the same files to a GitHub release.
+  4. It offers them to Macs through the update server, with `daemon/tools/publish_release.py`. For prod, it also attaches the same files to a GitHub release.
 
   Its secrets are listed at the top of the workflow.
 - **Your own firmware keeps its place.** The app never offers to update custom firmware, and Setup only replaces it if you ask to and confirm.
@@ -109,7 +36,6 @@ herdr isn't required, on this Mac or on other machines. A session outside it jus
 
 ```sh
 . ~/esp/esp-idf-v5.5.6/export.sh
-cd firmware
 idf.py -p /dev/cu.usbmodem1101 flash
 ```
 
@@ -120,7 +46,7 @@ Stop the daemon first: it holds the serial port.
 The firmware's open, and you don't have to write the code yourself. Open this repo with a coding agent and say what you'd like: `AGENTS.md` and the skills in `.claude/skills` tell it how, along with the rules that keep your agents answerable to you.
 
 - **A new screen:** `tools/preview/preview.py` shows the real screens as images, with no board and no ESP-IDF, so you can see it before you own one.
-- **Another board:** each board is a folder in `firmware/boards`, and everything else is shared. See `firmware/boards/README.md`.
+- **Another board:** each board is a folder in `boards`, and everything else is shared. See `boards/README.md`.
 - **A different device:** anything that speaks `docs/PROTOCOL.md` over USB works, such as a lamp.
 
 These have been tried without hardware, and not yet on a real board.
@@ -160,55 +86,6 @@ A new prompt or error leaves the Bit page for Agents. A prompt's buttons then st
 
 Its state is in `~/.ttycat/pet.json`, so it survives reflashing. `demo` mode uses a separate pet in memory.
 
-## Answering prompts safely
-
-Allow, Deny and answers to questions go through Claude Code's `PermissionRequest` hook (`daemon/hook.py`, `daemon/approvals.py`). Nothing is typed into a terminal. The terminal prompt stays up as usual, and whichever answers first wins.
-
-- **An answer can only reach the request it was shown for.** Each request is a hook process waiting on its own socket connection. The board echoes that request's id, and a decision goes only to that process.
-- **Failure leaves the prompt in the terminal.** With no daemon, no board, a crash or a timeout, the hook exits without a decision, and the prompt stays open. Nothing is approved.
-- **Allow is the plain Yes.** It never changes the command and never adds a permission rule. Rules in your settings that deny or ask still apply.
-- **Deny is the plain No.** It ends the turn, and the agent waits for you, as with No in the terminal. No answer here lets it carry on.
-- **Nothing is approved unseen.** The board shows the real command or diff, not Claude's description of it. A clipped one is marked and can be read in full by swiping up. Anything over 1000 characters is terminal-only, and so is an ask that doesn't fit the board's 6 KB of shared text.
-- **Stray taps don't count.** A tap within 600 ms of an ask appearing is ignored, and so is a press that began on another screen.
-- **A question can only be answered, and an answer can only go to a question.** The board sends option numbers and typed text. The daemon turns numbers back into the original labels and refuses anything incomplete, and `hook.py` fills in answers for `AskUserQuestion` and nothing else.
-- **Choosing takes two taps.** A tap only selects; **Send** answers. Both ignore a tap within 600 ms of the screen appearing.
-- **Plans are terminal-only.** `ExitPlanMode` also fires the hook, but Allow would dismiss it without your answer. A question the board can't show in full is terminal-only too.
-- **Other prompts are terminal-only.** Folder trust and other agents don't use this hook. Their text comes from the terminal and is only displayed.
-- **Nothing counts down.** Take as long as you need to read a prompt. After 2 minutes without a touch the screen goes back to the queue, so Allow isn't left live on the desk. The prompt stays open and can be reopened from the board.
-
-Tested against real Claude Code 2.1.316. These behaviours aren't all documented, so check them again after a major update:
-
-| Situation | What Claude Code does |
-|---|---|
-| Hook still waiting | The terminal prompt is up and usable |
-| Hook crashes, times out, or says nothing | The prompt stays open and nothing runs |
-| Allow arrives after No was pressed in the terminal | Ignored |
-| Yes pressed in the terminal | The hook is left running, so the daemon drops it once herdr says the pane moved on |
-| No pressed in the terminal | The hook is stopped |
-| Several tool calls at once | They ask one at a time, so a new request in a pane replaces the last |
-| Allow with `answers` for a question | Claude gets them as your answers, including typed text and several questions at once |
-
-## How it maps to herdr
-
-| herdr | Board |
-|---|---|
-| `blocked` | needs you |
-| `working` | working |
-| `done` | done, until tapped ("seen"; kept in the daemon, so herdr's own state and focus are untouched) |
-| `idle`, `unknown` | idle |
-
-Tabs are `claude` CC, `codex` CX, `opencode` OC and `pi` PI. Other kinds show under ALL only.
-
-## Known limits
-
-- **Claude Code is the only agent with Allow and Deny.** Codex is terminal-only, as designed. OpenCode is terminal-only too, unlike the design: no real OpenCode prompt could be captured (its provider returned errors).
-- **The keyboard types ASCII.** A label with an accent shows as `?` on the board, but Claude still gets the original. Typed answers on the board are limited to 200 characters.
-- **The Error state never appears with live data.** herdr has no such state, so only `demo` shows it.
-- **"Recent" reads Claude Code's session log (`daemon/activity.py`), here and over SSH.** It lists your prompts, tool calls, failures and what Claude said, and it changes nothing. Claude's docs call the log format internal, so a release could break it: the list then falls back to status changes. Codex, OpenCode and Pi only have status changes for now. Prompts and file names now show on the board, so anyone at your desk can read them.
-- **Only sessions in herdr panes reach the board.** The hook does nothing elsewhere, so those prompts stay in their terminal.
-- **Attach is untested on a pane that's on screen on the other machine.** herdr's docs say one direct attach owns a terminal's input and size, so that machine's view may resize until the window closes.
-- **The board holds 24 sessions across all machines.** Past that, the ones that need you are kept.
-
 ## Design changes for the real panel
 
 The design previews at 2x; the panel shows it at 1x, where some of the specified font sizes break up. Positions and line boxes follow the design. These are drawn at the nearest clean size (`tools/gen_fonts.py`):
@@ -227,9 +104,9 @@ Added beyond the design: the swipe-up full view, row scrolling on the queue, mac
 
 ## Board notes
 
-These are about the Waveshare board, in `firmware/boards/waveshare-esp32-c5-touch-lcd-2-8`.
+These are about the Waveshare board, in `boards/waveshare-esp32-c5-touch-lcd-2-8`.
 
-- **Screen:** the UI redraws into an RGB565 framebuffer in internal RAM, 240x320 on this board. Only rows that changed go to the ST7789, over SPI at 80 MHz. On other boards the screens lay themselves out for any size from 170 to 480 pixels wide and 240 to 480 tall: see `firmware/boards`.
+- **Screen:** the UI redraws into an RGB565 framebuffer in internal RAM, 240x320 on this board. Only rows that changed go to the ST7789, over SPI at 80 MHz. On other boards the screens lay themselves out for any size from 170 to 480 pixels wide and 240 to 480 tall: see `boards`.
 - **Reset and backlight:** both resets, the backlight and the speaker amp sit behind the CH32V003 at I2C 0x24. Waveshare's firmware on that chip stays as it is; flashing here only touches the ESP32-C5.
 - **SD slot:** it shares the panel's SPI bus, so at boot any inserted card gets CMD0 to move it to SPI mode. A card left in SD mode can read pixel data as commands.
 - **Panel gamma:** taken from the `touchreader` project (`rlcd/ereader/touchreader`), as are the touch and expander protocols.
@@ -253,25 +130,18 @@ The full protocol is in `docs/PROTOCOL.md`.
 ## Tests
 
 ```sh
-python3 -m unittest discover -s daemon/tests
+python3 tools/preview/preview.py out.png --scene asks --goto queue   # a screen, with no board and no ESP-IDF
+python3 -m unittest discover -s tools/tests                          # the colours are the daemon's
 ```
 
-The hook tests run the real `hook.py` over a real socket, with payloads shaped like those captured from Claude Code.
-
-The app's notification rules have their own tests. They run without Xcode, but need to be told where the command line tools keep the test macros:
-
-```sh
-cd app && swift test -Xswiftc -plugin-path -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing
-```
-
-Fonts: Press Start 2P, Silkscreen, Pixelify Sans and VT323, all SIL Open Font License (`tools/fonts/OFL-*.txt`).
+The daemon's and the app's tests are in their own repos. Fonts: Press Start 2P, Silkscreen, Pixelify Sans and VT323, all SIL Open Font License (`tools/fonts/OFL-*.txt`).
 
 ## Open source, and Pro
 
-Everything in this repository is free and open source: seeing your agents, answering their prompts, notifications, the board and its firmware, and Bit. It's complete without anything else.
+Everything in these three repos is free and open source: seeing your agents, answering their prompts, notifications, the board and its firmware, and Bit. It's complete without anything else.
 
-The official download adds paid features on top, kept in a separate private repository: usage and limits, a log of what agents did, other machines, and skins. They join through two small interfaces, `daemon/plugins.py` and `app/Sources/TTYCat/Extensions.swift`, and this code never depends on them.
+The official download adds paid features to the app, kept in a separate private repository: usage and limits, a log of what agents did, other machines, and skins. They join through two small interfaces, `plugins.py` in the daemon and `Extensions.swift` in the app, and the open code never depends on them.
 
 ## License
 
-Apache-2.0: see `LICENSE` and `NOTICE`. What the app carries from others, and under which license, is in `THIRD_PARTY.md`. The license doesn't grant use of the product's name or logo.
+Apache-2.0: see `LICENSE` and `NOTICE`. What the firmware builds on, and under which license, is in `THIRD_PARTY.md`. The license doesn't grant use of the product's name or logo.

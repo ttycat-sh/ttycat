@@ -17,7 +17,7 @@ import argparse, json, struct, subprocess, sys, tempfile, zlib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-FW = HERE.parent.parent / "firmware" / "main"
+FW = HERE.parent.parent / "main"
 REPLACED = {"main.c", "board.c", "link.c", "sound.c"}  # harness.c stands in for these
 W, H = 240, 320
 NOW = 1793000000

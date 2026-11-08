@@ -1,5 +1,4 @@
 ttycat
 Copyright 2026 Jonas Duri
 
-Includes detection rules from herdr, Apache-2.0: see daemon/agent_rules.LICENSE.
 Other third-party software is listed in THIRD_PARTY.md.

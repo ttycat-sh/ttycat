@@ -5,12 +5,12 @@ description: Change a screen on the ttycat board or add a new one, such as a big
 
 # Change or add a screen
 
-1. Ask what they want to see, in their words. If it isn't in `firmware/main/model.h`, say so: the board only knows what the Mac sends it, and has no internet of its own.
+1. Ask what they want to see, in their words. If it isn't in `main/model.h`, say so: the board only knows what the Mac sends it, and has no internet of its own.
 2. See how it looks now: `python3 tools/preview/preview.py now.png --goto pet`. Open the image.
-3. Make the change in `firmware/main/ui.c`. A new screen needs a value in `screen_t`, a `draw_...` function, a case in the `switch` in `ui_tick`, a way in and a way back. Tap areas are `hit(...)` calls inside the draw function, with an action in `action_t`. Add a name in `handle_goto` too, so it can be previewed.
+3. Make the change in `main/ui.c`. A new screen needs a value in `screen_t`, a `draw_...` function, a case in the `switch` in `ui_tick`, a way in and a way back. Tap areas are `hit(...)` calls inside the draw function, with an action in `action_t`. Add a name in `handle_goto` too, so it can be previewed.
 4. Preview it and look at the image yourself. Fix clipped text, overlaps and anything off the edge. Check `--scene quiet`, `one`, `asks` and `lots`, `--then one` for a prompt arriving while it's open, and `--grown N` for Bit at another level.
 5. Show them the picture and ask if it's right. Repeat.
-6. Check it builds for the real chip: `. ~/esp/esp-idf-v5.5.6/export.sh && cd firmware && idf.py build`, adjusting the path to where ESP-IDF is. If it isn't installed, say it's a large download (about 5 GB with every chip's tools) and ask first.
+6. Check it builds for the real chip: `. ~/esp/esp-idf-v5.5.6/export.sh && idf.py build`, adjusting the path to where ESP-IDF is. If it isn't installed, say it's a large download (about 5 GB with every chip's tools) and ask first.
 7. Putting it on the board is `ttycat-flash`.
 
 ## How the board behaves
