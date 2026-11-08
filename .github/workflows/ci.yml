@@ -3,21 +3,31 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  test:
-    runs-on: macos-latest
+  checks:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Daemon
-        run: python3 -m unittest discover -s daemon/tests
-      - name: App
-        working-directory: app
-        run: swift test
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true # the daemon: its tables, and its tools
       - name: Screens can be previewed with no board
         run: python3 tools/preview/preview.py preview.png --scene asks --goto queue && test -s preview.png
       - name: The shared firmware knows no particular board
-        run: "! grep -rniE 'waveshare|esp_lcd|esp32c5|driver/i2c|driver/spi|EXIO_' firmware/main --include='*.c' --include='*.h' --include='CMakeLists.txt' --exclude=fonts.c"
-      - name: It stands on its own
+        run: "! grep -rniE 'waveshare|esp_lcd|esp32c5|driver/i2c|driver/spi|EXIO_' main --include='*.c' --include='*.h' --include='CMakeLists.txt' --exclude=fonts.c"
+      - name: The colours are the daemon's
+        run: python3 -m unittest discover -s tools/tests
+
+  build:
+    runs-on: ubuntu-latest
+    # The same ESP-IDF 5.5.6 as a release, pinned by digest.
+    container: docker.io/espressif/idf@sha256:851f136a2c09cf17c13e952b9975606d7d1050be1480b1fd82c7ea4bce78cfb3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: The official board's firmware
+        shell: bash
         run: |
-          test ! -e app/Sources/TTYCat/_extra
-          ! git grep -n -E 'ProFeatures\.' -- ':!app/Sources/TTYCat/Extensions.swift'
+          . "$IDF_PATH/export.sh" > /dev/null
+          idf.py build

@@ -105,7 +105,7 @@ Everything is in Bit's dots, never the screen's pixels, so it's the same size on
 - Anything outside the limits, or that isn't as above, and the whole message is dropped. Never show part of one.
 - Ignore fields you don't know.
 
-A new kind of drawing is a new format. The protocol's `p` stays the same, because devices built before it still work: they just get less. The daemon checks only the basics (`daemon/art.py`), and the device checks everything (`firmware/main/art.c`). To try some art, `ttycatd.py art FILE` shows it until the daemon stops, and `ttycatd.py art off` takes it away. To see it at any size before flashing, `tools/preview/gallery.py out.png --art FILE`.
+A new kind of drawing is a new format. The protocol's `p` stays the same, because devices built before it still work: they just get less. The daemon checks only the basics (`daemon/art.py`), and the device checks everything (`main/art.c`). To try some art, `ttycatd.py art FILE` shows it until the daemon stops, and `ttycatd.py art off` takes it away. To see it at any size before flashing, `tools/preview/gallery.py out.png --art FILE`.
 
 ## Testing with no device and no real agents
 `demo` shows sample agents and answers nothing real, and it needs a hello with the right `p` like anything else. Give it a fresh `HOME` so it can't meet a running ttycat, and a pseudo-terminal as the port. Set the pseudo-terminal to raw mode, or what you write comes straight back:
