@@ -5,7 +5,7 @@ description: Run the ttycat firmware on a different ESP32 board with a touch scr
 
 # Run it on another board
 
-Each board is a folder. It provides the few functions in `firmware/main/board.h`, and gets every screen, Bit and the link to the Mac from the shared code. The folder is the person's own and lives outside this repo, in `~/ttycat-boards/NAME` unless they'd like it elsewhere. It never comes into this repo, not even as a pull request. Once it's flashed through the daemon, the board is registered, and the Mac app builds each new ttycat release for it with that folder, from Setup. The person may not be a programmer: tell them what you're doing in plain words, and ask them only what you can't find out yourself.
+Each board is a folder. It provides the few functions in `main/board.h`, and gets every screen, Bit and the link to the Mac from the shared code. The folder is the person's own and lives outside this repo, in `~/ttycat-boards/NAME` unless they'd like it elsewhere. It never comes into this repo, not even as a pull request. Once it's flashed through the daemon, the board is registered, and the Mac app builds each new ttycat release for it with that folder, from Setup. The person may not be a programmer: tell them what you're doing in plain words, and ask them only what you can't find out yourself.
 
 **Change nothing outside the board's folder.** If it seems you have to, because the shared screens don't handle something about this board, stop and ask. Say what and where. A fix there has to be general: it works for any board with the same trait, nothing in the shared code checks which board it is, and every other board stays exactly the same. Prove that with `npm run verify-board` in the website repo (`TTYCAT_CORE=path/to/ttycat` if it's elsewhere): every frame must match.
 
@@ -61,7 +61,7 @@ Before the first flash, save the board's own firmware. Nothing else can put it b
 
 ESP-IDF has to be in the shell for `idf.py` and `esptool.py`. Look for it with `ls ~/esp/*/export.sh`, then run `. ~/esp/esp-idf-vX/export.sh` in the same command as whatever needs it. If it isn't installed, say so: it's Espressif's free toolkit, and the install takes a while.
 
-1. Copy `firmware/boards/template` to `~/ttycat-boards/NAME`, named after the board in lowercase letters, numbers and dashes. Keep its first line, `set(BOARD_API ...)`: it says which version of `board.h` the folder was made for. The boards `README` is in `firmware/boards`. The two Waveshare folders there are complete examples: an LCD with square corners, and an AMOLED with rounded corners and zoom.
+1. Copy `boards/template` to `~/ttycat-boards/NAME`, named after the board in lowercase letters, numbers and dashes. Keep its first line, `set(BOARD_API ...)`: it says which version of `board.h` the folder was made for. The boards `README` is in `boards`. The two Waveshare folders there are complete examples: an LCD with square corners, and an AMOLED with rounded corners and zoom.
 2. Set the chip, flash size, PSRAM mode and speed in the folder's `sdkconfig.defaults`. List its files and the parts of ESP-IDF they need in its `CMakeLists.txt`. If it needs drivers from the component registry, list them in an `idf_component.yml` in the folder.
 3. Fill in `board.c`:
    - **Size and shape.** Set `PANEL_W`, `PANEL_H`, `ZOOM`, `CORNER_RADIUS` and `EDGE_INSET` to what the check said, with a comment saying where the radius came from. The template sets the picture's size from them, allocates it, and tells every screen to keep clear of the corners.
@@ -108,4 +108,4 @@ Offer to keep the folder in a git repository of their own (`git init` in it), an
 
 ## When an update says the folder needs changing
 
-Rarely, a release changes `board.h`, and raises `BOARD_API`. Setup then says the folder needs changing instead of offering the update. Read what changed in `firmware/main/board.h` and the template, change their folder to match (with its `set(BOARD_API ...)` line), then build from the new release's source, check it as in step 6, and flash it, which registers it again. Change nothing outside their folder.
+Rarely, a release changes `board.h`, and raises `BOARD_API`. Setup then says the folder needs changing instead of offering the update. Read what changed in `main/board.h` and the template, change their folder to match (with its `set(BOARD_API ...)` line), then build from the new release's source, check it as in step 6, and flash it, which registers it again. Change nothing outside their folder.

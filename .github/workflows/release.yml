@@ -1,16 +1,17 @@
 name: Release
 
-# A tag is a release: RELEASE_PLAN.md in ttycat-pro.
+# A tag is a release of the firmware: RELEASE_PLAN.md in ttycat-pro.
 #   vX.Y.Z         to prod, signed with prod's key, and a GitHub release with the same files
 #   vX.Y.Z-dev.N   to dev, signed with dev's key, which only debug builds trust
-# FW_VERSION in firmware/main/model.h must say X.Y.Z.
+# FW_VERSION in main/model.h must say X.Y.Z. The daemon/ submodule's tools sign it, in the formats the
+# daemon checks, and publish it.
 #
 # Each job gets only what it needs. The build runs the firmware's own code, so it gets no secrets. Signing
 # gets the signing key. Publishing gets the upload key and the publish token. Secrets aren't given to
 # workflows from forks, and this only runs on tags.
 #
 # Secrets, for ENV dev and prod:
-#   TTYCAT_SIGNING_KEY_ENV                         tools/release_key.py's secret
+#   TTYCAT_SIGNING_KEY_ENV                         daemon/tools/release_key.py's secret
 #   SCW_RELEASES_ACCESS_KEY_ENV, SCW_RELEASES_SECRET_KEY_ENV   releases-publisher-ENV: see ttycat-infrastructure
 #   API_PUBLISH_TOKEN_ENV                          the same token as ttycat-infrastructure's
 on:
@@ -44,15 +45,13 @@ jobs:
             echo "::error::$tag isn't vX.Y.Z or vX.Y.Z-dev.N"
             exit 1
           fi
-          have=$(sed -n 's/^#define FW_VERSION "\(.*\)"$/\1/p' firmware/main/model.h)
+          have=$(sed -n 's/^#define FW_VERSION "\(.*\)"$/\1/p' main/model.h)
           if [ "$have" != "$version" ]; then
             echo "::error::model.h says $have, and the tag $version"
             exit 1
           fi
           echo "env=$env" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - name: Daemon
-        run: python3 -m unittest discover -s daemon/tests
 
   build:
     needs: check
@@ -65,48 +64,51 @@ jobs:
         shell: bash
         run: |
           . "$IDF_PATH/export.sh" > /dev/null
-          cd firmware
           idf.py -B build-release -D FW_RELEASE=1 build
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: build-release
           if-no-files-found: error
           path: |
-            firmware/build-release/flasher_args.json
-            firmware/build-release/ttycat.bin
-            firmware/build-release/bootloader/bootloader.bin
-            firmware/build-release/partition_table/partition-table.bin
+            build-release/flasher_args.json
+            build-release/ttycat.bin
+            build-release/bootloader/bootloader.bin
+            build-release/partition_table/partition-table.bin
 
   sign:
     needs: [check, build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true # the daemon, whose tools sign and publish
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: build-release
-          path: firmware/build-release
+          path: build-release
       - name: Sign the firmware and the core's source
         env:
           TTYCAT_SIGNING_KEY: ${{ secrets[format('TTYCAT_SIGNING_KEY_{0}', needs.check.outputs.env)] }}
+        # Out of the checkout: the core's source is the checkout itself.
         run: |
-          python3 tools/firmware_bundle.py firmware/build-release out/firmware --sign
-          python3 tools/release_core.py out/core
+          python3 daemon/tools/firmware_bundle.py build-release "$RUNNER_TEMP/out/firmware" --sign
+          python3 daemon/tools/release_core.py . "$RUNNER_TEMP/out/core"
       - name: A prod release is signed by a key the app trusts
         if: needs.check.outputs.env == 'prod'
         run: |
-          python3 - <<'EOF'
+          python3 - "$RUNNER_TEMP/out" <<'EOF'
           import sys; sys.path.insert(0, "daemon")
           import flasher, glob, release
-          flasher.read_image("out/firmware")
-          for path in glob.glob("out/core/ttycat-core-*.json"):
+          out = sys.argv[1]
+          flasher.read_image(out + "/firmware")
+          for path in glob.glob(out + "/core/ttycat-core-*.json"):
               release.open_release(path)
-          print("signed by a key in daemon/release_keys.json")
+          print("signed by a key in the daemon's release_keys.json")
           EOF
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: signed
-          path: out
+          path: ${{ runner.temp }}/out
           if-no-files-found: error
 
   publish:
@@ -119,6 +121,8 @@ jobs:
       VERSION: ${{ needs.check.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true # the daemon, whose tools sign and publish
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: signed
@@ -156,7 +160,7 @@ jobs:
         run: |
           api=https://api.ttycat.sh
           [ "$ENVIRONMENT" = dev ] && api=https://api.dev.ttycat.sh
-          python3 tools/publish_release.py --api "$api" out/firmware "out/core/ttycat-core-$VERSION.json"
+          python3 daemon/tools/publish_release.py --api "$api" out/firmware "out/core/ttycat-core-$VERSION.json"
       - name: A GitHub release with the same files, so anyone can check them without our server
         if: needs.check.outputs.env == 'prod'
         env:
@@ -164,6 +168,6 @@ jobs:
         run: |
           board=$(python3 -c 'import json; print(json.loads(json.load(open("out/firmware/release.json"))["body"])["board"])')
           tar -czf "ttycat-firmware-$board-$VERSION.tar.gz" -C out/firmware .
-          gh release create "$GITHUB_REF_NAME" --verify-tag --title "ttycat $VERSION" \
-            --notes "Signed with ttycat's release key: see daemon/release_keys.json." \
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "ttycat firmware $VERSION" \
+            --notes "Signed with ttycat's release key: see release_keys.json in https://github.com/ttycat-sh/ttycat-daemon." \
             "ttycat-firmware-$board-$VERSION.tar.gz" out/core/*

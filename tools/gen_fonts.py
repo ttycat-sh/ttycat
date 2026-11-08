@@ -3,7 +3,7 @@
 # requires-python = ">=3.10"
 # dependencies = ["pillow>=10"]
 # ///
-"""Renders the design's four pixel fonts to 1-bit C tables (firmware/main/fonts.c).
+"""Renders the design's four pixel fonts to 1-bit C tables (main/fonts.c).
 
 Each font_t is named after the design's type role, keeps that role's line box
 (`box`), and is drawn at the nearest size that lands on the font's pixel grid. At
@@ -20,7 +20,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent
-OUT = ROOT.parent / "firmware" / "main"
+OUT = ROOT.parent / "main"
 # name, file, drawn px, line box px, weight, method
 FONTS = [
     ("sk9", "Silkscreen-Bold.ttf", 8, 9, None, "mono"),
