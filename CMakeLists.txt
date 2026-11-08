@@ -22,7 +22,7 @@ else()
   set(BOARD_DIR "${CMAKE_CURRENT_LIST_DIR}/boards/${BOARD}")
 endif()
 if(NOT EXISTS "${BOARD_DIR}/CMakeLists.txt")
-  message(FATAL_ERROR "No board folder at ${BOARD_DIR}: see the folders in firmware/boards")
+  message(FATAL_ERROR "No board folder at ${BOARD_DIR}: see the folders in boards")
 endif()
 
 # A folder made for another board interface wouldn't build, or worse, would and then misbehave.
@@ -51,5 +51,5 @@ string(REGEX REPLACE "^CONFIG_IDF_TARGET=\"(.*)\"$" "\\1" board_target "${board_
 idf_build_get_property(build_target IDF_TARGET)
 if(NOT board_target STREQUAL build_target)
   message(FATAL_ERROR "${BOARD} is an ${board_target}, but this build is for ${build_target}. "
-                      "Delete firmware/sdkconfig and this build folder, and unset IDF_TARGET.")
+                      "Delete sdkconfig and this build folder, and unset IDF_TARGET.")
 endif()

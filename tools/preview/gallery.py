@@ -17,7 +17,7 @@ import argparse, json, re, struct, subprocess, sys, tempfile, zlib
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-FW = HERE.parent.parent / "firmware" / "main"
+FW = HERE.parent.parent / "main"
 REPLACED = {"main.c", "board.c", "link.c", "sound.c"}
 NOW = 1793000000
 BLOCKED, ERROR, DONE, WORKING, IDLE = 0, 1, 2, 3, 4
@@ -175,10 +175,10 @@ def png(path, w, h, pixel):
 
 def board_shape(name):
     """The picture's size and its corners, from the #defines in a board's board.c, as its board_begin works them out."""
-    folder = Path(name).expanduser()  # a folder of your own, or the name of one in firmware/boards
-    path = (folder if folder.is_dir() else HERE.parent.parent / "firmware" / "boards" / name) / "board.c"
+    folder = Path(name).expanduser()  # a folder of your own, or the name of one in boards/
+    path = (folder if folder.is_dir() else HERE.parent.parent / "boards" / name) / "board.c"
     if not path.exists():
-        sys.exit(f"no board called {name}: see the folders in firmware/boards")
+        sys.exit(f"no board called {name}: see the folders in boards/")
     defs = {k: int(v) for k, v in re.findall(r"^#define\s+(\w+)\s+(\d+)\b", path.read_text(), re.M)}
     zoom, inset = defs.get("ZOOM", 1), defs.get("EDGE_INSET", 0)
     w, h = (defs["PANEL_W"] - 2 * inset) // zoom, (defs["PANEL_H"] - 2 * inset) // zoom
