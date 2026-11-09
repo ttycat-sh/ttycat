@@ -7,13 +7,17 @@ name: Release
 # daemon checks, and publish it.
 #
 # Each job gets only what it needs. The build runs the firmware's own code, so it gets no secrets. Signing
-# gets the signing key. Publishing gets the upload key and the publish token. Secrets aren't given to
-# workflows from forks, and this only runs on tags.
+# gets the signing key. Publishing gets the upload key and the publish token.
 #
-# Secrets, for ENV dev and prod:
-#   TTYCAT_SIGNING_KEY_ENV                         daemon/tools/release_key.py's secret
-#   SCW_RELEASES_ACCESS_KEY_ENV, SCW_RELEASES_SECRET_KEY_ENV   releases-publisher-ENV: see ttycat-infrastructure
-#   API_PUBLISH_TOKEN_ENV                          the same token as ttycat-infrastructure's
+# The secrets live in two environments, release-dev and release-prod, never in the repository's own
+# secrets, so no other workflow and no branch can read them. Each environment gives them only to tags:
+# release-dev to v*-dev.*, release-prod to v*. The Release tags ruleset lets only admins push v* tags,
+# and secrets are never given to workflows from forks.
+#
+# Secrets, in each of release-dev and release-prod:
+#   TTYCAT_SIGNING_KEY                             daemon/tools/release_key.py's secret
+#   SCW_RELEASES_ACCESS_KEY, SCW_RELEASES_SECRET_KEY   releases-publisher-ENV: see ttycat-infrastructure
+#   API_PUBLISH_TOKEN                              the same token as ttycat-infrastructure's
 on:
   push:
     tags: ["v*"]
@@ -78,6 +82,7 @@ jobs:
   sign:
     needs: [check, build]
     runs-on: ubuntu-latest
+    environment: release-${{ needs.check.outputs.env }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -88,7 +93,7 @@ jobs:
           path: build-release
       - name: Sign the firmware and the core's source
         env:
-          TTYCAT_SIGNING_KEY: ${{ secrets[format('TTYCAT_SIGNING_KEY_{0}', needs.check.outputs.env)] }}
+          TTYCAT_SIGNING_KEY: ${{ secrets.TTYCAT_SIGNING_KEY }}
         # Out of the checkout: the core's source is the checkout itself.
         run: |
           python3 daemon/tools/firmware_bundle.py build-release "$RUNNER_TEMP/out/firmware" --sign
@@ -114,6 +119,7 @@ jobs:
   publish:
     needs: [check, sign]
     runs-on: ubuntu-latest
+    environment: release-${{ needs.check.outputs.env }}
     permissions:
       contents: write # the GitHub release
     env:
@@ -129,8 +135,8 @@ jobs:
           path: out
       - name: Upload to the releases bucket
         env:
-          AWS_ACCESS_KEY_ID: ${{ secrets[format('SCW_RELEASES_ACCESS_KEY_{0}', needs.check.outputs.env)] }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets[format('SCW_RELEASES_SECRET_KEY_{0}', needs.check.outputs.env)] }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.SCW_RELEASES_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SCW_RELEASES_SECRET_KEY }}
           AWS_DEFAULT_REGION: fr-par
           # Scaleway's Object Storage refuses the checksums newer AWS CLIs send by default.
           AWS_REQUEST_CHECKSUM_CALCULATION: when_required
@@ -156,7 +162,7 @@ jobs:
           put "out/core/ttycat-core-$VERSION.json" "releases/core/ttycat-core-$VERSION.json"
       - name: Offer it to Macs
         env:
-          API_PUBLISH_TOKEN: ${{ secrets[format('API_PUBLISH_TOKEN_{0}', needs.check.outputs.env)] }}
+          API_PUBLISH_TOKEN: ${{ secrets.API_PUBLISH_TOKEN }}
         run: |
           api=https://api.ttycat.sh
           [ "$ENVIRONMENT" = dev ] && api=https://api.dev.ttycat.sh
