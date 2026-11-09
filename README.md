@@ -20,7 +20,7 @@ git clone --recurse-submodules https://github.com/ttycat-sh/ttycat-firmware
 
 - The app carries the firmware that was built when ttycat-app's `build.sh` ran, so build the firmware first. The version comes from the binary, and updates are offered only for a board on an older one, so **bump `FW_VERSION` in `main/model.h` for every release**. A changed build with the same number won't be offered.
 - **Only a release says it's ttycat's firmware, and only signed.** `tools/release_firmware.sh` builds it into `build-release`, and signs its image and the core's source with the key in `TTYCAT_SIGNING_KEY` (`daemon/tools/release_key.py` makes one). The daemon writes firmware that says it's ttycat's own only from an image signed by a key in its `release_keys.json`, whether it comes in the app or from a server. ttycat-app's `release.sh` won't go without all of it. Anything else built from source says something like `custom-0.9.1-a1b2c3d4` (set `FW_LABEL` for your own first word), where the end comes from the source, so every change has a new name.
-- **A tag is a release.** `.github/workflows/release.yml` runs on `vX.Y.Z`, for prod, and on `vX.Y.Z-dev.N`, for dev. `FW_VERSION` must say `X.Y.Z`.
+- **A tag is a release.** `.github/workflows/release.yml` runs on `vX.Y.Z`, for prod, and on `vX.Y.Z-dev.N`, for dev. `FW_VERSION` must say `X.Y.Z`. A version goes to each environment once: a rebuild isn't byte-for-byte the same, and the bucket never replaces a file, so a second `-dev.N` of the same version stops at the upload. Bump `FW_VERSION` instead.
   1. It builds the official board's firmware in Espressif's ESP-IDF image, pinned by digest.
   2. It signs that firmware and the core's source with the environment's key.
   3. It uploads them to the releases bucket, never replacing a file.
@@ -49,7 +49,7 @@ The firmware's open, and you don't have to write the code yourself. Open this re
 - **Another board:** each board is a folder in `boards`, and everything else is shared. See `boards/README.md`.
 - **A different device:** anything that speaks `docs/PROTOCOL.md` over USB works, such as a lamp.
 
-These have been tried without hardware, and not yet on a real board.
+Another board has been tried on a real one: an agent with only the skill ported it to `boards/waveshare-esp32-s3-touch-amoled-2-16`, and `docs/ports` has how it went. A different device has been tried without hardware, and not yet for real.
 
 ## Using it
 
@@ -119,7 +119,7 @@ One JSON object per line, on the board's USB port. Other lines, such as boot and
 |---|---|
 | Daemon to board | `state` once a second (sessions, local time, history of the watched session, pet counts), `ack` after an answer |
 | Board to daemon | `hello`, `act` (allow, deny, answer, open, ask-mac, seen, and `pet-*`), `watch`, `touch` (logged) |
-| Testing, via `ttycatd.py` | `shot PATH` saves the real frame as a PNG; `tap X Y`, `swipe L\|R\|U\|D`, `goto SCREEN` (`queue`, `overview`, `tab:N`, `ask:ID`, `detail:ID`, `pet`, `pet:heart`, `pet:reward`, `pet:level`, `pet:sleep`); in demo, `scene NAME` (including `question`, `questions`, `pet-asleep`, `pet-old`, `pet-birthday`, `pet-lv5`) |
+| Testing, via `ttycatd.py` | `shot PATH` saves the real frame as a PNG; `tap X Y`, `swipe L\|R\|U\|D`, `goto SCREEN` (`queue`, `overview`, `tab:N`, `ask:ID`, `detail:ID`, `pet`, `pet:heart`, `pet:reward`, `pet:level`, `pet:sleep`, `pet:birthday`); in demo, `scene NAME` (including `question`, `questions`, `long`, `many`) |
 
 **Only ttycat's own firmware can approve without being asked about.** A device that gives any other name in `hello`, or none, can see everything, open a session and Deny, but its `allow` and `answer` are refused, and it's told so with `na`, so the firmware shows "On Mac" where Allow was and brings the prompt up here. That's because it may have no way to show the whole prompt. For one that does, Setup > Firmware has **It can approve prompts**, off until you confirm, for that name only (`~/.ttycat/devices.json`). This guards against accidents. Each new build of your own asks again. It can't stop a device built to lie about its name.
 

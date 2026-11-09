@@ -13,7 +13,7 @@ Everything else, the screens, Bit and talking to the Mac, is shared, so a board 
 
 To see whether a board can run it, and how to set it up, run `python3 ../../tools/board_check.py` with its chip and screen (and `--corner` if its corners are rounded). To see every screen at that size, run `python3 ../../tools/preview/gallery.py out.png --size WxH`, adding `--corner R` for rounded corners. Once the board's folder exists, `gallery.py out.png --board NAME` takes the size and corners from its `board.c` and shows each screen as its glass will, and `--cut` paints anything the corners would hide in red.
 
-The folders here are ttycat's own: the official board, a reference board, and the template. A board of your own lives in a folder of your own, outside this repo, so updating ttycat never touches it, and it's never merged in. Copy `template` to a folder named after your board, using lowercase letters, numbers and dashes, and build it from `firmware` with:
+The folders here are ttycat's own: the official board, a reference board, and the template. A board of your own lives in a folder of your own, outside this repo, so updating ttycat never touches it, and it's never merged in. Copy `template` to a folder named after your board, using lowercase letters, numbers and dashes, and build it from this repo with:
 
     idf.py -B build-NAME -D BOARD_DIR=/path/to/NAME build
 
@@ -21,4 +21,4 @@ Keep the `set(BOARD_API ...)` line at the top of its `CMakeLists.txt`. It says w
 
 A folder here builds with `-D BOARD=NAME` instead.
 
-The template builds, but shows nothing until it's filled in. The Waveshare folder is a complete example.
+The template builds, but shows nothing until it's filled in. The two Waveshare folders are complete examples.
