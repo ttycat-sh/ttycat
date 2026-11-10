@@ -7,7 +7,7 @@ The first time a fresh agent took ttycat to a board nobody had ported it to, usi
 - **Board:** Waveshare ESP32-S3-Touch-AMOLED-2.16. ESP32-S3R8 (8 MB octal PSRAM, 16 MB flash), 480x480 AMOLED on a CO5300 over QSPI, CST9220 touch, ES8311 codec with an amp to a 2-pin speaker socket, AXP2101 power chip, QMI8658 motion sensor.
 - **Brief:** a shop link, "it's plugged in over USB-C", the skill, and a yes to flash. The person was away: no questions could be asked.
 - **Agent:** headless Claude Code, in a scratch copy of the repo, with permissions skipped. 87 turns, 19 minutes, $4.82.
-- **Result:** `custom-0.10.1-370e7247` running, connected to the app, showing real sessions, dimming. The screens it showed match the 240x240 gallery. Nothing outside `firmware/boards/waveshare-esp32-s3-touch-amoled-2-16/` changed.
+- **Result:** `custom-0.10.1-370e7247` running, connected to the app, showing real sessions, dimming. The screens it showed match the 240x240 gallery. Nothing outside `boards/waveshare-esp32-s3-touch-amoled-2-16/` changed.
 - **Not yet proven:** anything on the glass or under a finger. See "Still to check" below.
 
 ## What went right
@@ -65,5 +65,5 @@ The person found the glass has rounded corners, which hid the edges of the scree
 
 ## Files
 
-- `firmware/boards/waveshare-esp32-s3-touch-amoled-2-16/`: the board, as the agent left it.
+- `boards/waveshare-esp32-s3-touch-amoled-2-16/`: the board, as the agent left it.
 - `~/ttycat-backups/`: the factory flash (16 MB), both builds, and both runs' transcripts. Not in the repo.

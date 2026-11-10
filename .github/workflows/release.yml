@@ -60,7 +60,9 @@ jobs:
   build:
     needs: check
     runs-on: ubuntu-latest
-    # ESP-IDF 5.5.6, pinned by digest, so anyone can build the same firmware from the same tag.
+    # ESP-IDF 5.5.6, pinned by digest, so every release builds with the same tools. The build isn't
+    # reproducible: building the same tag again gives different files (bootloader.bin, for one), so a new
+    # run for a version that's already published stops at the upload, which never replaces a file.
     container: docker.io/espressif/idf@sha256:851f136a2c09cf17c13e952b9975606d7d1050be1480b1fd82c7ea4bce78cfb3
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -144,7 +146,8 @@ jobs:
         run: |
           bucket="ttycat-$ENVIRONMENT-releases"
           s3="https://s3.fr-par.scw.cloud"
-          # Never replaced: the same bytes again are fine, so a run can be repeated, anything else stops it.
+          # Never replaced: the same bytes again are fine, so a failed publish can be re-run on its own.
+          # Anything else stops it, including a fresh build of the same version.
           put() {
             if aws s3api head-object --endpoint-url "$s3" --bucket "$bucket" --key "$2" > /dev/null 2>&1; then
               aws s3 cp --endpoint-url "$s3" --only-show-errors "s3://$bucket/$2" have

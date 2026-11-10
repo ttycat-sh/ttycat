@@ -73,7 +73,7 @@ ESP-IDF has to be in the shell for `idf.py` and `esptool.py`. Look for it with `
 
    Then `python3 tools/preview/gallery.py out.png --board ~/ttycat-boards/NAME --cut` shows every screen with the folder's own size and corners. If something is still cut off, that's for the shared screens, not something to move for one board: see the top.
 4. Leave a `README.md` in the folder: the board's name and maker, where each detail came from, and what's been checked on the real board. The next person with this board starts there.
-5. Build, from `firmware`: `idf.py -B ~/ttycat-boards/build-NAME -D BOARD_DIR=$HOME/ttycat-boards/NAME build`.
+5. Build, from this repo: `idf.py -B ~/ttycat-boards/build-NAME -D BOARD_DIR=$HOME/ttycat-boards/NAME build`.
 
 ## 5. Put it on the board
 
