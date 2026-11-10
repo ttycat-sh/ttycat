@@ -1,5 +1,5 @@
 // Immediate-mode drawing into the RGB565 framebuffer. No anti-aliasing:
-// everything lands on whole pixels, as the design's pixel system asks.
+// everything lands on whole pixels, so the pixel art stays crisp.
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
@@ -62,7 +62,7 @@ void gfx_fill(int x, int y, int w, int h, color_t c);
 // A 2 px border inside the box. Where a rounded corner of the glass would hide it, it follows the glass.
 void gfx_border(int x, int y, int w, int h, color_t c);
 void gfx_dashed(int x, int y, int w, int h, color_t c);
-// The design's stepped corner: paints the 2x2 corners in the colour behind.
+// A stepped corner, as on every box: paints the 2x2 corners in the colour behind.
 void gfx_corners(int x, int y, int w, int h, color_t behind);
 // `.n` box: fill, optional 2 px border, stepped corners.
 void gfx_box(int x, int y, int w, int h, color_t bg, const color_t *border, color_t behind);

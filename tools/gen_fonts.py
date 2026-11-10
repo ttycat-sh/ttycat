@@ -10,8 +10,8 @@ Each font_t is named after the design's type role, keeps that role's line box
 the design's nominal sizes (Silkscreen 9, VT323 14/16/18, Pixelify 13) 1-bit glyphs
 break up on this panel: "m" fills in and "e" reads as "o". `base` is the distance
 from the top of a CSS line-height:1 box to the baseline, so UI code can use the
-design's y values directly. Only ASCII plus the middle dot (char 127) is included,
-as in the design's spec ("1-bit, ASCII only").
+design's y values directly. Only ASCII and the middle dot are included: gfx.c
+draws the dot for 0xB7 and 127, and anything else as "?".
 
 Glyphs are either FreeType's mono rendering ("mono") or the outline sampled 16x and
 thresholded ("over"), whichever is cleaner for that size.

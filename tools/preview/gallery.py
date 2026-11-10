@@ -197,16 +197,24 @@ def lost_here(f, i, w, h, r):
     """Whether something is lost at hidden pixel i: it isn't just the background, or a box's fill or border,
     carrying on behind the glass, which shows as one of the first eight colours the glass does show
     inward from it, along its row or up or down its column. Black counts only between two runs of the
-    same colour, as black lettering on a coloured box does: anywhere else it's the background."""
+    same colour, as black lettering on a coloured box does: anywhere else it's the background. A run that
+    goes out to the picture's edge is a frame round the whole screen, which gfx_border draws again inside
+    the glass, so the black between the two is background too."""
     x0, y0 = i % w, i // w
     if f[i] == (0, 0, 0):
         def near(step):
             for k in range(1, 4):
                 x = x0 + k * step
                 if 0 <= x < w and f[y0 * w + x] != (0, 0, 0):
-                    return f[y0 * w + x]
-        out = near(-1 if x0 < w // 2 else 1)
-        if out is None or near(1 if x0 < w // 2 else -1) != out:
+                    return x
+        outward = -1 if x0 < w // 2 else 1
+        out, back = near(outward), near(-outward)
+        if out is None or back is None or f[y0 * w + out] != f[y0 * w + back]:
+            return False
+        x = out
+        while 0 <= x < w and f[y0 * w + x] == f[y0 * w + out]:
+            x += outward
+        if not 0 <= x < w:
             return False
     for dx, dy in ((1 if x0 < w // 2 else -1, 0), (0, 1 if y0 < h // 2 else -1)):
         x, y, shown = x0, y0, []

@@ -107,6 +107,16 @@ Everything is in Bit's dots, never the screen's pixels, so it's the same size on
 
 A new kind of drawing is a new format. The protocol's `p` stays the same, because devices built before it still work: they just get less. The daemon checks only the basics (`daemon/art.py`), and the device checks everything (`main/art.c`). To try some art, `ttycatd.py art FILE` shows it until the daemon stops, and `ttycatd.py art off` takes it away. To see it at any size before flashing, `tools/preview/gallery.py out.png --art FILE`.
 
+## Driving a device from the Mac
+For checking a device without touching it. `ttycatd.py` sends these when it's asked to; a device doesn't have to understand them, and ttycat's firmware does.
+
+| Message | Means |
+|---|---|
+| `{"t":"tap","x":120,"y":300}` | A tap at that point of the picture, through the same code as a finger. It can answer a prompt like a finger can: `AGENTS.md`, rule 5 |
+| `{"t":"swipe","dir":"L"}` | A swipe: `L`, `R`, `U` or `D` |
+| `{"t":"goto","screen":"pet"}` | Shows a screen by name, as listed in the README |
+| `{"t":"shot"}` | Sends back what's on the screen, as `{"t":"shot","i":0,"n":64,"w":240,"h":320,"d":"..."}` lines: part `i` of `n`, each the base64 of the next piece of the RGB565 picture, two bytes a pixel, high byte first |
+
 ## Testing with no device and no real agents
 `demo` shows sample agents and answers nothing real, and it needs a hello with the right `p` like anything else. Give it a fresh `HOME` so it can't meet a running ttycat, and a pseudo-terminal as the port. Set the pseudo-terminal to raw mode, or what you write comes straight back:
 

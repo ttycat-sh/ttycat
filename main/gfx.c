@@ -257,16 +257,13 @@ int gfx_wrap(const font_t *f, int x, int y, int w, int lh, color_t c, const char
     const char *e = s;
     int ww = 0;
     while (*e == ' ') ww += glyph(f, *e++)->adv;
-    int spaces = ww;
     while (*e && *e != ' ' && *e != '\n') ww += glyph(f, *e++)->adv;
     if (pen && pen + ww > w) {
       lines++;
       y += lh;
       pen = 0;
       while (*s == ' ') s++;  // no spaces at a line's start
-      spaces = 0;
     }
-    (void)spaces;
     for (; s < e; s++) {
       if (*s == ' ' && !pen) continue;
       const glyph_t *g = glyph(f, *s);

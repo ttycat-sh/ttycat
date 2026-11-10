@@ -86,21 +86,17 @@ A new prompt or error leaves the Bit page for Agents. A prompt's buttons then st
 
 Its state is in `~/.ttycat/pet.json`, so it survives reflashing. `demo` mode uses a separate pet in memory.
 
-## Design changes for the real panel
+## Fonts on the real panel
 
-The design previews at 2x; the panel shows it at 1x, where some of the specified font sizes break up. Positions and line boxes follow the design. These are drawn at the nearest clean size (`tools/gen_fonts.py`):
+The screens were designed at twice the panel's size, and at 1x some of the font sizes break up into dots. Positions and line boxes stay as designed, and these are drawn at the nearest clean size instead, by `tools/gen_fonts.py`:
 
-| Design | Drawn at |
+| Designed at | Drawn at |
 |---|---|
 | Silkscreen 9 | 8 |
 | VT323 14 and 16 | 15, with `m w M W 4 9` redrawn by hand |
 | VT323 18 | 20 with tighter spacing, `f` redrawn by hand |
 | Pixelify Sans 13 | 15 |
 | Press Start 2P 12 (LINK LOST) | 16 |
-
-The design's Idle board is now Bit's home screen, with its level above the clock. It appears after 30 s untouched, not after 60 s with every agent idle.
-
-Added beyond the design: the swipe-up full view, row scrolling on the queue, machine names, the question screen and keyboard, the pet and its home screen, the "All clear" tile on Overview, and "runs herdr focus" in place of "runs focusCommand".
 
 ## Board notes
 
@@ -109,7 +105,7 @@ These are about the Waveshare board, in `boards/waveshare-esp32-c5-touch-lcd-2-8
 - **Screen:** the UI redraws into an RGB565 framebuffer in internal RAM, 240x320 on this board. Only rows that changed go to the ST7789, over SPI at 80 MHz. On other boards the screens lay themselves out for any size from 170 to 480 pixels wide and 240 to 480 tall: see `boards`.
 - **Reset and backlight:** both resets, the backlight and the speaker amp sit behind the CH32V003 at I2C 0x24. Waveshare's firmware on that chip stays as it is; flashing here only touches the ESP32-C5.
 - **SD slot:** it shares the panel's SPI bus, so at boot any inserted card gets CMD0 to move it to SPI mode. A card left in SD mode can read pixel data as commands.
-- **Panel gamma:** taken from the `touchreader` project (`rlcd/ereader/touchreader`), as are the touch and expander protocols.
+- **Panel gamma, touch and expander:** done as Waveshare's Arduino driver does them. With the ST7789's own voltages and gamma, the colours look washed out.
 
 ## Serial protocol
 
@@ -117,9 +113,9 @@ One JSON object per line, on the board's USB port. Other lines, such as boot and
 
 | Direction | Message |
 |---|---|
-| Daemon to board | `state` once a second (sessions, local time, history of the watched session, pet counts), `ack` after an answer |
-| Board to daemon | `hello`, `act` (allow, deny, answer, open, ask-mac, seen, and `pet-*`), `watch`, `touch` (logged) |
-| Testing, via `ttycatd.py` | `shot PATH` saves the real frame as a PNG; `tap X Y`, `swipe L\|R\|U\|D`, `goto SCREEN` (`queue`, `overview`, `tab:N`, `ask:ID`, `detail:ID`, `pet`, `pet:heart`, `pet:reward`, `pet:level`, `pet:sleep`, `pet:birthday`); in demo, `scene NAME` (including `question`, `questions`, `long`, `many`) |
+| Daemon to board | `hello` back, `state` once a second (sessions, local time, history of the watched session, Bit), `ack` after each `act`, `art` for Bit's stage, `name` when the person names the board |
+| Board to daemon | `hello`, `act` (allow, deny, answer, open, ask-mac, seen, and `pet-*`), `watch`, `dim`, `need`, `touch` (logged) |
+| Testing, via `ttycatd.py` | `shot PATH` saves the real frame as a PNG; `tap X Y`, `swipe L\|R\|U\|D`, `goto SCREEN` (`queue`, `overview`, `tab:N`, `ask:ID`, `full`, `keys`, `detail:ID`, `pet`, `pet:heart`, `pet:reward`, `pet:level`, `pet:sleep`, `pet:birthday`); in demo, `scene NAME` (including `question`, `questions`, `long`, `many`) |
 
 **Only ttycat's own firmware can approve without being asked about.** A device that gives any other name in `hello`, or none, can see everything, open a session and Deny, but its `allow` and `answer` are refused, and it's told so with `na`, so the firmware shows "On Mac" where Allow was and brings the prompt up here. That's because it may have no way to show the whole prompt. For one that does, Setup > Firmware has **It can approve prompts**, off until you confirm, for that name only (`~/.ttycat/devices.json`). This guards against accidents. Each new build of your own asks again. It can't stop a device built to lie about its name.
 
@@ -131,8 +127,12 @@ The full protocol is in `docs/PROTOCOL.md`.
 
 ```sh
 python3 tools/preview/preview.py out.png --scene asks --goto queue   # a screen, with no board and no ESP-IDF
-python3 -m unittest discover -s tools/tests                          # the colours are the daemon's
+python3 tools/preview/gallery.py out.png --size 170x320              # every screen at one size
+python3 tools/preview/unchanged.py                                   # every screen on every board, as at the last commit
+python3 -m unittest discover -s tools/tests                          # taps answer only the prompt on screen, and the colours are the daemon's
 ```
+
+`unchanged.py` is for changes that shouldn't show: a fix for one board's sake, or tidying up. It renders every screen at every size and on every board from your change and from the last commit, and says which frames differ.
 
 The daemon's and the app's tests are in their own repos. Fonts: Press Start 2P, Silkscreen, Pixelify Sans and VT323, all SIL Open Font License (`tools/fonts/OFL-*.txt`).
 

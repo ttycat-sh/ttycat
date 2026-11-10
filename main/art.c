@@ -200,7 +200,13 @@ static void draw_falling(int64_t now, int width, int top, int ground, int dot) {
   }
 }
 
+// The stage as last drawn: what Bit wears stays on it too.
+static int stage_w, stage_top, stage_ground;
+
 void art_draw_stage(int64_t now, int width, int top, int ground, int dot) {
+  stage_w = width;
+  stage_top = top;
+  stage_ground = ground;
   if (!showing()) return;
   gfx_clip(0, top, width, ground - top);
   for (int i = 0; i < now_showing.pieces; i++) {
@@ -225,7 +231,9 @@ void art_draw_wear(art_slot_t slot, int64_t now, int x, int y, int dot, int mode
   const art_wear_t *w = &now_showing.wear[slot];
   if (w->hide & modes) return;
   const art_sprite_t *s = &now_showing.sp[w->sprite];
+  gfx_clip(0, stage_top, stage_w, stage_ground - stage_top);
   draw_sprite(s, frame_at(s, now, 0), x + w->x * dot, y + w->y * dot, dot);
+  gfx_noclip();
 }
 
 const char *art_said(void) { return showing() ? now_showing.say : ""; }

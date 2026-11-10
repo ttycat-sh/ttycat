@@ -53,10 +53,14 @@ void board_flush(void) {}
 bool board_touch(int *x, int *y) { *x = finger_x; *y = finger_y; return finger; }
 void link_begin(void) {}
 void link_send_line(const char *json) { (void)json; }
-void link_act(const char *act, const char *id, const char *rev) { (void)act; (void)id; (void)rev; }
+// What the board would send the Mac, one line each on stdout: tools/tests/test_answers.py reads them.
+void link_act(const char *act, const char *id, const char *rev) { printf("act %s %s %s\n", act, id, rev ? rev : ""); }
 void link_watch(const char *id) { (void)id; }
 void link_answer(const char *id, const char *rev, int questions, const uint8_t *picks, const uint8_t *option_count, char typed[][TYPED_MAX + 1]) {
-  (void)id; (void)rev; (void)questions; (void)picks; (void)option_count; (void)typed;
+  (void)option_count; (void)typed;
+  printf("act answer %s %s", id, rev);
+  for (int q = 0; q < questions; q++) printf(" %d", picks[q]);
+  printf("\n");
 }
 bool link_usb_connected(void) { return true; }
 void link_send_shot(void) {}

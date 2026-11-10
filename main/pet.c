@@ -88,14 +88,15 @@ void pet_stage(int width, int ground, int dot) {
 
 int pet_level(int32_t total) {
   int n = 1;
-  while (3 * n * n <= total) n++;
+  while (n < 20000 && 3 * n * n <= total) n++;  // 3n² stays well inside an int32
   return n;
 }
 
 int pet_progress(int32_t total, int of) {
   int n = pet_level(total);
   int32_t from = 3 * (n - 1) * (n - 1), to = 3 * n * n;
-  return (int)((total - from) * of / (to - from));
+  int done = (int)((int64_t)(total - from) * of / (to - from));
+  return done > of ? of : done;
 }
 
 static uint32_t rnd(uint32_t n) { return esp_random() % n; }
