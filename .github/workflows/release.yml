@@ -1,8 +1,8 @@
 name: Release
 
-# A tag is a release of the firmware: RELEASE_PLAN.md in ttycat-pro.
+# A tag is a release of the firmware, for the official board:
 #   vX.Y.Z         to prod, signed with prod's key, and a GitHub release with the same files
-#   vX.Y.Z-dev.N   to dev, signed with dev's key, which only debug builds trust
+#   vX.Y.Z-dev.N   to dev, signed with dev's key, which only dev builds of the app trust
 # FW_VERSION in main/model.h must say X.Y.Z. The daemon/ submodule's tools sign it, in the formats the
 # daemon checks, and publish it.
 #
@@ -15,9 +15,10 @@ name: Release
 # and secrets are never given to workflows from forks.
 #
 # Secrets, in each of release-dev and release-prod:
-#   TTYCAT_SIGNING_KEY                             daemon/tools/release_key.py's secret
-#   SCW_RELEASES_ACCESS_KEY, SCW_RELEASES_SECRET_KEY   releases-publisher-ENV: see ttycat-infrastructure
-#   API_PUBLISH_TOKEN                              the same token as ttycat-infrastructure's
+#   TTYCAT_SIGNING_KEY                                 daemon/tools/release_key.py's secret
+#   SCW_RELEASES_ACCESS_KEY, SCW_RELEASES_SECRET_KEY   the key that uploads to that environment's releases
+#                                                      bucket, on Scaleway's Object Storage
+#   API_PUBLISH_TOKEN                                  the update server's token for publishing a release
 on:
   push:
     tags: ["v*"]

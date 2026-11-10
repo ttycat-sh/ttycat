@@ -3,7 +3,10 @@
 #   idf.py -B build-NAME -D BOARD=NAME build             another folder in boards/
 #   idf.py -B build-NAME -D BOARD_DIR=/path/NAME build   a folder of your own, outside this repo
 cmake_minimum_required(VERSION 3.16)
-set(PROJECT_VER "0.1.0")
+
+# The version in the image's own header is FW_VERSION, so there's only one to bump: main/model.h.
+file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/main/model.h" fw_version REGEX "^#define FW_VERSION ")
+string(REGEX REPLACE "^#define FW_VERSION \"([^\"]+)\".*$" "\\1" PROJECT_VER "${fw_version}")
 
 # The ESP-IDF every release is built with. A release says so, and the Mac app builds with it.
 set(TTYCAT_IDF "5.5")

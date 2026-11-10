@@ -151,8 +151,8 @@ static bool IRAM_ATTR lcd_flushed(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io
   return woken == pdTRUE;
 }
 
-// Voltages and gamma from Waveshare's Arduino driver. The ST7789's defaults show
-// this design's colours paler (found on this board in the touchreader project).
+// Voltages and gamma from Waveshare's Arduino driver. With the ST7789's own defaults the
+// colours look washed out on this panel.
 static void panel_tuning(void) {
   static const struct {
     uint8_t c, n, d[14];

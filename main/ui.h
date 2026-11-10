@@ -1,4 +1,4 @@
-// The screens of the ttycat design, their touch targets and navigation.
+// Every screen, what can be tapped on it, and how the screens lead to each other.
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
