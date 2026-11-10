@@ -114,14 +114,16 @@ For checking a device without touching it. `ttycatd.py` sends these when it's as
 |---|---|
 | `{"t":"tap","x":120,"y":300}` | A tap at that point of the picture, through the same code as a finger. It can answer a prompt like a finger can: `AGENTS.md`, rule 5 |
 | `{"t":"swipe","dir":"L"}` | A swipe: `L`, `R`, `U` or `D` |
-| `{"t":"goto","screen":"pet"}` | Shows a screen by name, as listed in the README |
+| `{"t":"goto","screen":"pet"}` | Shows a screen by name: see below |
 | `{"t":"shot"}` | Sends back what's on the screen, as `{"t":"shot","i":0,"n":64,"w":240,"h":320,"d":"..."}` lines: part `i` of `n`, each the base64 of the next piece of the RGB565 picture, two bytes a pixel, high byte first |
+
+From a terminal, `ttycatd.py shot PATH` saves the board's real frame as a PNG, and `ttycatd.py tap X Y`, `swipe L|R|U|D` and `goto SCREEN` send the rest. ttycat's firmware knows these screens: `queue`, `overview`, `tab:N`, `ask:ID`, `full`, `keys`, `detail:ID`, `pet`, and Bit's moments `pet:heart`, `pet:reward`, `pet:level`, `pet:sleep` and `pet:birthday`.
 
 ## Testing with no device and no real agents
 `demo` shows sample agents and answers nothing real, and it needs a hello with the right `p` like anything else. Give it a fresh `HOME` so it can't meet a running ttycat, and a pseudo-terminal as the port. Set the pseudo-terminal to raw mode, or what you write comes straight back:
 
     HOME=$(mktemp -d) python3 daemon/ttycatd.py --port /dev/ttysNNN demo
 
-With the same `HOME`, `ttycatd.py scene NAME` changes what it shows (`main`, `no-infra` then `main` for a prompt arriving, `question`, `long`), and `ttycatd.py silence 7` makes it go quiet.
+With the same `HOME`, `ttycatd.py scene NAME` changes what it shows (`main`, `no-infra` then `main` for a prompt arriving, `done`, `long`, `question`, `questions`, `errored`, `busy`, `many`), and `ttycatd.py silence 7` makes it go quiet.
 
 Demo mode isn't the real thing. It says yes to every `deny` and `open`, ignores `rev`, and only clears a prompt on `answer`, so one you've denied stays up. It does refuse `allow` from a device that isn't allowed to approve, so you can test that.
