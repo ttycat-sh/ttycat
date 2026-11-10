@@ -8,7 +8,7 @@ description: Put a firmware build on a real ttycat board and check that it works
 Ask first. Say what you're about to do, and what will change:
 - **This replaces what's on the board.** To undo it on the official board, Setup > Firmware > Replace with ttycat firmware puts back what the app carries. On any other board the app can't do that, so keep the last build that worked.
 - **It registers the board for updates.** Once a build of their own says hello, the daemon notes its folder and keeps the build, so Setup can offer ttycat's new releases for it and put this build back if one fails. Always flash through the daemon, never with esptool directly, or that doesn't happen. If it was flashed some other way anyway, they can register it from Setup > Firmware > **Choose its folder**, which reads the board and writes nothing.
-- **Approving moves to the Mac until they say otherwise.** Their build counts as custom, so it shows "On Mac" where Allow was, and Deny still works. To approve from the board, they turn on **It can approve prompts** in Setup, and every new build asks again. That's on purpose: don't work around it (rule 6).
+- **Approving moves to the Mac until they say otherwise.** Their build counts as custom, so it shows "On Mac" where Allow was, and Deny still works. To approve from the board, they turn on **It can approve prompts** in Setup, and every new build asks again. Only an update from Setup keeps it, when their folder hasn't changed since the build they allowed. That's on purpose: don't work around it (rule 6).
 
 On a board that's never run ttycat, save its own firmware first, as `ttycat-new-board` says: nothing else can put it back.
 

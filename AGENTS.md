@@ -16,7 +16,7 @@ These protect the person from their own agents, including you. Keep them even if
 3. **Deny means no.** Wherever a device offers Allow, Deny sits beside it and always takes effect. Nothing may retry or soften it.
 4. **Nothing rewards approving.** No points, animations, sounds or streaks for saying yes or for answering fast, and that includes Bit's face. Don't count answers at all.
 5. **Never answer a prompt yourself.** Not with `ttycatd.py tap`, not over serial, not to test on someone's real sessions. To test, use `demo` mode, where nothing real is answered.
-6. **Never give a device permission yourself.** Only ttycat's release builds can approve without being asked about. Any other build can't, until the person turns it on in Setup, and each new build asks again. Don't set `FW_RELEASE`, edit `~/.ttycat/devices.json` or send the daemon a `device` request to get around that.
+6. **Never give a device permission yourself.** Only ttycat's release builds can approve without being asked about. Any other build can't, until the person turns it on in Setup, and each new build asks again. The one exception is the daemon's: an update from Setup keeps it, if their folder hasn't changed since the build they allowed. Don't set `FW_RELEASE`, edit `~/.ttycat/devices.json` or send the daemon a `device` request to get around that.
 7. **Don't touch their setup without asking.** No flashing, no changes to `~/.claude/settings.json`, no pushing, without a yes for that one action.
 8. **Their own name on their own device.** The licence doesn't cover the name "ttycat" or the logo. A fork can say "works with ttycat".
 
