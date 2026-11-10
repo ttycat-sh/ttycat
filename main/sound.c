@@ -2,16 +2,11 @@
 
 #include "board.h"
 #include "nvs.h"
-#include "nvs_flash.h"
 
 static bool muted;
 
+// Storage is ready: app_main starts it first.
 void sound_begin(void) {
-  esp_err_t e = nvs_flash_init();
-  if (e == ESP_ERR_NVS_NO_FREE_PAGES || e == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-    nvs_flash_erase();
-    nvs_flash_init();
-  }
   nvs_handle_t h;
   if (nvs_open("ttycat", NVS_READONLY, &h) == ESP_OK) {
     uint8_t m = 0;

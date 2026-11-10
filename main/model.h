@@ -84,6 +84,10 @@ typedef struct {
   char pet_name[12];
   bool no_approve;  // the Mac won't take Allow or answers from this build until the person says so
   char art_id[12];  // the art Bit's stage should show, or "": art.h
+  // The look the Mac chose: numbers into gfx.c's tables, or, if look_is_rgb, three colours (body, shade, accent).
+  int8_t look_skin, look_accent;
+  bool look_is_rgb;
+  uint32_t look_colors[3];
   char text[BODY_POOL];          // text[0] is always the empty string
   int text_used;
   question_t q[MAX_QUESTIONS];

@@ -17,7 +17,7 @@
 #include "pet.h"
 #include "sound.h"
 
-// Palette (design: Spec, "Pixel system").
+// The palette.
 #define BLACK RGB(0x000000)
 #define TILE RGB(0x0C0C0C)
 #define LINE RGB(0x262626)
@@ -91,7 +91,7 @@ typedef struct {
 
 enum {
   LINK_TIMEOUT_MS = 5000,
-  ASK_IDLE_MS = 120000,     // untouched this long, an ask goes back to the queue: Allow isn't left live on the desk
+  ASK_IDLE_MS = 120000,     // untouched this long, an ask goes back to the queue: no Allow or Send left live on the desk
   ARM_DELAY_MS = 600,       // a tap this soon after an ask appears is not an answer to it
   ALERT_MS = 8000,
   HOME_AFTER_MS = 30000,    // untouched this long with nothing needing you: the pet's home
@@ -125,6 +125,7 @@ static screen_t screen = SCR_BOOT;
 static uint32_t screen_gen;  // a press only counts on the screen it began on
 static int tab;
 static char cur_id[16], cur_rev[16];
+static uint8_t cur_ask;  // the kind of ask drawn: if it changes, the ask is opened afresh
 static int64_t ask_armed_at, ask_opened_at;
 static bool answering;
 static int64_t answering_since;
@@ -132,6 +133,7 @@ static char alert_id[16];
 static int64_t alert_until;
 static bool opening;  // Open on Mac sent, no reply yet: more taps wouldn't help
 static int64_t opening_since, opened_until;
+static int64_t other_until;  // seen, ask-mac or a pat sent, no ack yet: one act at a time
 static int32_t pet_seen;
 static int pet_level_seen;
 static int pet_hello = -1;       // a welcome back, saved for when the pet's on screen to give it
@@ -151,6 +153,8 @@ static bool ask_clipped;  // the code box doesn't show all of this ask
 
 static hit_t hits[48];
 static int hit_n;
+static uint32_t hits_gen;                 // the screen the hits were drawn for
+static char drawn_ids[MAX_SESSIONS][16];  // the sessions as drawn: hits name them by their place here
 
 // The answers so far to the question being asked, kept if you step away and come back.
 static char q_rev[16];
@@ -234,6 +238,7 @@ static void open_session(const session_t *s);
 static void open_ask(const session_t *s) {
   strlcpy(cur_id, s->id, sizeof(cur_id));
   strlcpy(cur_rev, s->rev, sizeof(cur_rev));
+  cur_ask = s->ask;
   ask_opened_at = ask_armed_at = now_ms();
   answering = false;
   diff_scroll = 0;
@@ -401,24 +406,34 @@ static bool code_body(const session_t *s, int x, int y, int w, int h, color_t bg
     gfx_text(&vt18, right - wa, ty - 1, GREEN, n);
     right -= wa + 6;
     gfx_clip(x + 8, y, right - x - 8, h);
-    const char *name = s->file;  // a path too wide for the box keeps its end
-    while (*name && gfx_width(&vt18, name, 0) > right - x - 8) name++;
-    gfx_text(&vt18, x + 8, ty - 1, WHITE, name);
+    const char *name = s->file;  // a path too wide for the box keeps its end, after a "..."
+    int room = right - x - 8, dots = gfx_width(&vt18, "...", 0);
+    if (gfx_width(&vt18, name, 0) > room) {
+      while (*name && gfx_width(&vt18, name, 0) > room - dots) name++;
+      gfx_text(&vt18, x + 8, ty - 1, MUTED, "...");
+      gfx_text(&vt18, x + 8 + dots, ty - 1, WHITE, name);
+    } else {
+      gfx_text(&vt18, x + 8, ty - 1, WHITE, name);
+    }
     gfx_clip(x, y, w, h);
     ty += 18;
     const char *p = BODY_OF(s);
-    while (*p && ty < y + h) {
+    while (*p && ty + 18 <= y + h) {  // whole lines only: a line half shown could look like all there is
       const char *e = strchr(p, '\n');
       size_t len = e ? (size_t)(e - p) : strlen(p);
       char row[64];
-      if (len >= sizeof(row)) len = sizeof(row) - 1;
+      if (len >= sizeof(row)) {
+        len = sizeof(row) - 1;
+        clipped = true;
+      }
       memcpy(row, p, len);
       row[len] = 0;
+      if (gfx_width(&vt18, row, 0) > w - 16) clipped = true;  // one line each, so a long one runs off the side
       gfx_text(&vt18, x + 8, ty - 1, row[0] == '-' ? ORANGE : row[0] == '+' ? GREEN : MUTED, row);
       ty += 18;
       p = e ? e + 1 : "";
     }
-    clipped = *p != 0;
+    if (*p) clipped = true;
   } else {
     static char text[BODY_MAX + 4];
     snprintf(text, sizeof(text), "%s%s", dollar ? "$ " : "", BODY_OF(s));
@@ -945,9 +960,9 @@ static void draw_ask(const session_t *s) {
     snprintf(of, sizeof(of), "%d of %d", pos, asks);
     int room = (HR - x - 5 - gfx_width(&vt16, of, 0)) / 11;  // one mark for each ask, as many as fit
     int most = room < 6 ? (room < 1 ? 1 : room) : 6;
-    int shown = asks > most ? most : asks;
+    int shown = room < 1 ? 0 : asks > most ? most : asks;  // very round corners leave room for the count alone
     for (int i = 0; i < shown; i++) gfx_fill(x + i * 11, 8, 8, 3, i == (pos - 1) % most ? ORANGE : FAINT);
-    gfx_text(&vt16, x + shown * 11 + 5, 2, MUTED, of);
+    if (x + shown * 11 + 5 + gfx_width(&vt16, of, 0) <= HR) gfx_text(&vt16, x + shown * 11 + 5, 2, MUTED, of);
   } else {
     gfx_caps(&sk9, HL, 5, WHITE, "Needs you", 0);
     char w[20], a[8];
@@ -1001,8 +1016,8 @@ static void draw_ask(const session_t *s) {
   }
 }
 
-// Everything the code box couldn't show, reached by swiping up on an ask. Not a
-// separate design board: the same code box, using the whole screen.
+// Everything the code box couldn't show, reached by swiping up on an ask: the same code box,
+// using the whole screen.
 static void draw_full(const session_t *s) {
   gfx_icon(I_LEFT, HL, 8, 1, WHITE);
   gfx_caps(&sk9, HL + 9, 5, WHITE, "Back", 0);
@@ -1035,6 +1050,12 @@ static void draw_full(const session_t *s) {
 }
 
 // ---------------------------------------------------------------- choices
+
+// Whether the ask is still a choice whose questions all arrived. link.c turns any that didn't into one
+// for the terminal, and follow_ask then opens it afresh.
+static bool choice_ok(const session_t *s) {
+  return s->ask == ASK_CHOICE && q_index < s->q_n && s->q_first + s->q_n <= MAX_QUESTIONS;
+}
 
 static const question_t *current_question(const session_t *s) { return &model.q[s->q_first + q_index]; }
 
@@ -1082,14 +1103,23 @@ static void draw_choice(const session_t *s) {
                                   : &model.text[q->label[i]];
     const char *desc = typed_row ? "" : &model.text[q->desc[i]];
     color_t lc = typed_row && !q_typed[q_index][0] ? MUTED : WHITE;
-    gfx_clip(32, y + 1, CW - 30, h - 2);
+    int room = CW - 30;
+    bool cut = gfx_width(&vt16, label, 0) > room;  // the swipe-up view has all of it
+    gfx_clip(32, y + 1, room, h - 2);
     if (desc[0] && h >= 30) {
       gfx_text(&vt16, 32, y + (h - 30) / 2, lc, label);
       gfx_text(&vt14, 32, y + (h - 30) / 2 + 15, MUTED, desc);
+      cut = cut || gfx_width(&vt14, desc, 0) > room;
     } else {
       gfx_text(&vt16, 32, y + (h - 15) / 2, lc, label);
+      cut = cut || desc[0];  // no room for its description
     }
     gfx_noclip();
+    if (cut) {
+      int dw = gfx_width(&vt16, "...", 0) + 4;
+      gfx_fill(6 + CW - 4 - dw, y + 2, dw, h - 4, on ? CARD : TILE);
+      gfx_right(&vt16, 6 + CW - 6, y + (h - 15) / 2, ORANGE, "...");
+    }
     hit(6, y, CW, h, A_OPTION, i);
   }
 
@@ -1115,7 +1145,7 @@ static void pick_option(const session_t *s, int i) {
 
 static void keyboard_finished(bool saved) {
   session_t *s = find_session(cur_id);
-  if (saved && s) {
+  if (saved && s && choice_ok(s)) {
     const question_t *q = current_question(s);
     uint8_t typed_bit = 1 << OPTION_MAX;
     if (!q_typed[q_index][0]) q_picks[q_index] &= (uint8_t)~typed_bit;
@@ -1258,14 +1288,34 @@ static void change_tab(int delta) {
   screen_gen++;
 }
 
-static void answer(const char *act) {
+// The ask on screen, only while it's still the one that was drawn: a tap never answers a newer prompt,
+// even one in the same pane that arrived as the finger lifted.
+static session_t *shown_ask(void) {
   session_t *s = find_session(cur_id);
-  if (!s || answering) return;
-  // the daemon checks this rev against the prompt on screen right before answering
-  link_act(act, s->id, s->rev);
+  return s && s->state == ST_BLOCKED && !strcmp(s->rev, cur_rev) && s->ask == cur_ask ? s : NULL;
+}
+
+// An ack doesn't say which act it's for (docs/PROTOCOL.md), so nothing new is sent until the last is acked.
+static bool act_waiting(void) { return answering || opening || now_ms() < other_until; }
+
+static bool act_other(const char *act, const char *id, const char *rev) {
+  if (act_waiting()) return false;
+  link_act(act, id, rev);
+  other_until = now_ms() + ACK_TIMEOUT_MS;
+  return true;
+}
+
+static void answer(const char *act) {
+  session_t *s = shown_ask();
+  if (!s || act_waiting()) return;
+  // the rev that was drawn: the daemon answers only if that's still the prompt waiting
+  link_act(act, s->id, cur_rev);
   answering = true;
   answering_since = now_ms();
 }
+
+// A session a hit was drawn for, if it's still there.
+static session_t *drawn_session(int i) { return i >= 0 && i < MAX_SESSIONS ? find_session(drawn_ids[i]) : NULL; }
 
 static void do_action(const hit_t *h) {
   int64_t now = now_ms();
@@ -1279,10 +1329,10 @@ static void do_action(const hit_t *h) {
       screen_gen++;
       break;
     case A_SESSION:
-      if (h->arg >= 0 && h->arg < model.n) open_session(&model.s[h->arg]);
+      if ((s = drawn_session(h->arg))) open_session(s);
       break;
     case A_DONE_SEEN:
-      if (h->arg >= 0 && h->arg < model.n) link_act("seen", model.s[h->arg].id, NULL);
+      if ((s = drawn_session(h->arg))) act_other("seen", s->id, NULL);
       break;
     case A_CARD:
       tab = h->arg;
@@ -1294,8 +1344,7 @@ static void do_action(const hit_t *h) {
       if (now - ask_armed_at >= ARM_DELAY_MS) answer("allow");
       break;
     case A_ASK_MAC:
-      if (now - ask_armed_at >= ARM_DELAY_MS && (s = find_session(cur_id))) {
-        link_act("ask-mac", s->id, s->rev);
+      if (now - ask_armed_at >= ARM_DELAY_MS && (s = shown_ask()) && act_other("ask-mac", s->id, cur_rev)) {
         strlcpy(toast, "Look on your Mac", sizeof(toast));
         toast_until = now + TOAST_MS;
       }
@@ -1304,7 +1353,7 @@ static void do_action(const hit_t *h) {
       if (now - ask_armed_at >= ARM_DELAY_MS) answer("deny");
       break;
     case A_OPTION:
-      if (now - ask_armed_at >= ARM_DELAY_MS && (s = find_session(cur_id))) pick_option(s, h->arg);
+      if (now - ask_armed_at >= ARM_DELAY_MS && (s = shown_ask()) && choice_ok(s)) pick_option(s, h->arg);
       break;
     case A_CHOICE_BACK:
       if (q_index) q_index--;
@@ -1312,7 +1361,7 @@ static void do_action(const hit_t *h) {
       screen_gen++;
       break;
     case A_CHOICE_NEXT:
-      if (now - ask_armed_at < ARM_DELAY_MS || answering || !(s = find_session(cur_id))) break;
+      if (now - ask_armed_at < ARM_DELAY_MS || act_waiting() || !(s = shown_ask()) || !choice_ok(s) || strcmp(q_rev, cur_rev)) break;
       if (q_index + 1 < s->q_n) {
         q_index++;
         ask_armed_at = now;
@@ -1320,7 +1369,7 @@ static void do_action(const hit_t *h) {
       } else {
         uint8_t counts[QUESTION_MAX];
         for (int i = 0; i < s->q_n; i++) counts[i] = model.q[s->q_first + i].options;
-        link_answer(s->id, s->rev, s->q_n, q_picks, counts, q_typed);
+        link_answer(s->id, cur_rev, s->q_n, q_picks, counts, q_typed);
         answering = true;
         answering_since = now;
       }
@@ -1334,7 +1383,7 @@ static void do_action(const hit_t *h) {
       break;
     case A_OPEN:
       s = find_session(cur_id);
-      if (s && !opening) {
+      if (s && !act_waiting()) {
         link_act("open", s->id, NULL);
         opening = true;
         opening_since = now;
@@ -1349,7 +1398,7 @@ static void do_action(const hit_t *h) {
       break;
     case A_PET_OPEN: open_home(); break;
     case A_PET:
-      link_act("pet-pat", "", NULL);
+      act_other("pet-pat", "", NULL);
       break;
     default: break;
   }
@@ -1370,6 +1419,7 @@ static int hit_at(int x, int y) {
 }
 
 static void on_tap(int x, int y) {
+  if (hits_gen != screen_gen) return;  // drawn for a screen that's gone: they'd do something else now
   int i = hit_at(x, y);
   if (i >= 0) do_action(&hits[i]);
 }
@@ -1506,8 +1556,9 @@ void ui_set_art(const art_t *a) {
   xSemaphoreGive(model_lock);
 }
 
+// Only a state says the link works: a daemon that answers hello but whose states can't be read, too
+// long or too deep, must show as lost rather than as all quiet.
 void ui_link_hello(void) {
-  last_rx_ms = now_ms();
   hello_seen = true;
   dim_resend = true;  // a daemon that's just connected doesn't know
 }
@@ -1544,7 +1595,7 @@ static void handle_goto(const char *name) {
   } else if (!strcmp(name, "queue")) {
     go(SCR_QUEUE);
   } else if (!strncmp(name, "tab:", 4)) {
-    tab = atoi(name + 4) % 5;
+    tab = (atoi(name + 4) % 5 + 5) % 5;
     go(SCR_QUEUE);
   } else if (!strncmp(name, "ask:", 4)) {
     session_t *s = find_session(name + 4);
@@ -1556,8 +1607,27 @@ static void handle_goto(const char *name) {
     diff_scroll = 0;
     go(SCR_DIFF);
   } else if (!strcmp(name, "keys") && screen == SCR_CHOICE) {
-    session_t *s = find_session(cur_id);
-    if (s) pick_option(s, current_question(s)->options);
+    session_t *s = shown_ask();
+    if (s && choice_ok(s)) pick_option(s, current_question(s)->options);
+  }
+}
+
+// An ask on screen follows what the Mac says: answered, it moves on; replaced, even in the same pane, or
+// turned into another kind, it's opened afresh, armed again. Runs as soon as a new model arrives,
+// before any tap is handled, so a tap only ever answers what was drawn.
+static void follow_ask(int64_t now) {
+  if (screen != SCR_ASK && screen != SCR_DIFF && screen != SCR_CHOICE && screen != SCR_KEYS) return;
+  session_t *s = find_session(cur_id);
+  if (!s || s->state != ST_BLOCKED) {
+    // answered here or at the terminal: on to the next one, else back
+    answering = false;
+    if (count_state(ST_BLOCKED)) open_next_need();
+    else go(SCR_QUEUE);
+  } else if (strcmp(s->rev, cur_rev) || s->ask != cur_ask || ((screen == SCR_CHOICE || screen == SCR_KEYS) && !choice_ok(s))) {
+    open_ask(s);
+  } else if ((s->ask == ASK_APPROVE || s->ask == ASK_CHOICE) &&
+             now - (ask_opened_at > last_touch_ms ? ask_opened_at : last_touch_ms) >= ASK_IDLE_MS) {
+    go(SCR_QUEUE);  // nobody's here; the prompt is still there, and in the terminal
   }
 }
 
@@ -1570,6 +1640,7 @@ static void step_navigation(void) {
     if (asking && find_session(cur_id)) go(SCR_LOST);
     else if (screen != SCR_BOOT && screen != SCR_LOST) go(SCR_BOOT);
     answering = opening = false;
+    other_until = 0;
     hello_seen = false;
     undim();
     return;
@@ -1581,20 +1652,7 @@ static void step_navigation(void) {
     last_touch_ms = now;
   }
 
-  if (screen == SCR_ASK || screen == SCR_DIFF || screen == SCR_CHOICE || screen == SCR_KEYS) {
-    session_t *s = find_session(cur_id);
-    if (!s || s->state != ST_BLOCKED) {
-      // answered here or at the terminal: on to the next one, else back
-      answering = false;
-      if (count_state(ST_BLOCKED) && strcmp(cur_id, "")) open_next_need();
-      else go(SCR_QUEUE);
-    } else if (strcmp(s->rev, cur_rev)) {
-      // a different prompt in the same pane: treat it as newly opened
-      open_ask(s);
-    } else if (s->ask == ASK_APPROVE && now - (ask_opened_at > last_touch_ms ? ask_opened_at : last_touch_ms) >= ASK_IDLE_MS) {
-      go(SCR_QUEUE);  // nobody's here; the prompt is still there, and in the terminal
-    }
-  }
+  follow_ask(now);
   if (screen == SCR_DETAIL && !find_session(cur_id)) go(SCR_QUEUE);
   if (opening && now - opening_since > OPEN_TIMEOUT_MS) {
     opening = false;
@@ -1635,6 +1693,9 @@ void ui_tick(void) {
   if (model_fresh) {
     model_fresh = false;
     notice_new_asks();
+    if (model.look_is_rgb) look_rgb(model.look_colors[0], model.look_colors[1], model.look_colors[2]);
+    else look_set(model.look_skin, model.look_accent);
+    if (now_ms() - last_rx_ms < LINK_TIMEOUT_MS) follow_ask(now_ms());
     // Only the art the Mac names is shown. Missing it, because its line was lost, the board asks again.
     if (strcmp(model.art_id, art_id())) {
       if (art_id()[0]) art_use(NULL);
@@ -1667,10 +1728,13 @@ void ui_tick(void) {
       case UI_EV_GOTO: handle_goto(ev.text); break;
       case UI_EV_SHOT: shot = true; break;
       case UI_EV_ACK:
-        answering = false;
         if (opening) {
           opening = false;
           if (ev.ok) opened_until = now_ms() + OPENED_MS;
+        } else if (answering) {
+          answering = false;
+        } else {
+          other_until = 0;
         }
         if (!ev.ok && ev.text[0]) {
           strlcpy(toast, ev.text, sizeof(toast));
@@ -1684,6 +1748,8 @@ void ui_tick(void) {
 
   // Hits are rebuilt with each frame, while a held press keeps pointing at its slot.
   hit_n = 0;
+  hits_gen = screen_gen;
+  for (int i = 0; i < model.n; i++) strlcpy(drawn_ids[i], model.s[i].id, sizeof(drawn_ids[i]));
   gfx_clear(BLACK);
   session_t *cur = find_session(cur_id);
   switch (screen) {
@@ -1697,7 +1763,7 @@ void ui_tick(void) {
       if (cur) draw_full(cur);
       break;
     case SCR_CHOICE:
-      if (cur) draw_choice(cur);
+      if (cur && choice_ok(cur)) draw_choice(cur);
       break;
     case SCR_KEYS:
       keyboard_draw(now_ms(), down && !wake_swallow, last_x, last_y);

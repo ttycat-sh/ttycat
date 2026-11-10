@@ -5,7 +5,6 @@
 #include <string.h>
 
 #include "art.h"
-#include "board.h"
 #include "cJSON.h"
 #include "esp_mac.h"
 #include "nvs.h"
@@ -24,7 +23,8 @@
 #include "pet.h"
 #include "ui.h"
 
-#define RX_LINE_MAX 24576
+#define RX_LINE_MAX 24576  // the longest line the daemon sends: docs/PROTOCOL.md
+#define JSON_DEPTH_MAX 16  // more nesting than any message has: cJSON's parser recurses, and this task's stack is small
 
 // The chip's own USB port, or a USB-to-serial chip on its first UART: a board's sdkconfig.defaults says which.
 #if CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG
@@ -58,7 +58,7 @@ bool link_usb_connected(void) { return true; }  // a UART can't tell
 #endif
 
 static SemaphoreHandle_t tx_lock;
-static char line[RX_LINE_MAX];
+static char line[RX_LINE_MAX + 1];
 static model_t next;
 
 static void write_all(const char *s, size_t n) {
@@ -152,6 +152,8 @@ static bool parse_questions(session_t *s, const cJSON *o) {
   return s->q_n > 0;
 }
 
+static int16_t clamp16(int n) { return (int16_t)(n > INT16_MAX ? INT16_MAX : n < INT16_MIN ? INT16_MIN : n); }
+
 static void parse_state_msg(const cJSON *j) {
   memset(&next, 0, sizeof(next));
   const cJSON *now = cJSON_GetObjectItemCaseSensitive(j, "now");
@@ -176,8 +178,8 @@ static void parse_state_msg(const cJSON *j) {
     copy_str(st, sizeof(st), o, "s");
     s->state = parse_state(st);
     s->age = (uint32_t)get_int(o, "age", 0);
-    s->add = (int16_t)get_int(o, "add", 0);
-    s->del = (int16_t)get_int(o, "del", 0);
+    s->add = clamp16(get_int(o, "add", 0));
+    s->del = clamp16(get_int(o, "del", 0));
     char ask[12];
     copy_str(ask, sizeof(ask), o, "ask");
     s->ask = !strcmp(ask, "approve") ? ASK_APPROVE : !strcmp(ask, "choice") ? ASK_CHOICE
@@ -194,6 +196,7 @@ static void parse_state_msg(const cJSON *j) {
       s->ask = ASK_TERMINAL;
       strlcpy(s->note, "Too many asks at once. Answer it in the terminal", sizeof(s->note));
     }
+    if (s->ask != ASK_CHOICE) s->q_n = 0;  // a choice only partly here has no questions to show
   }
   const cJSON *h = cJSON_GetObjectItemCaseSensitive(j, "hist");
   if (h) {
@@ -225,12 +228,11 @@ static void parse_state_msg(const cJSON *j) {
   // gfx.c, or three colours: body, shade and accent.
   const cJSON *look = cJSON_GetObjectItemCaseSensitive(j, "look");
   const cJSON *skin = cJSON_GetArrayItem(look, 0), *accent = cJSON_GetArrayItem(look, 1);
-  uint32_t body, shade, acc;
-  if (parse_rgb(skin, &body) && parse_rgb(accent, &shade) && parse_rgb(cJSON_GetArrayItem(look, 2), &acc))
-    look_rgb(body, shade, acc);
-  else
-    look_set(cJSON_IsNumber(skin) ? skin->valueint : 0, cJSON_IsNumber(accent) ? accent->valueint : 0);
-  ui_set_model(&next);
+  uint32_t *c = next.look_colors;
+  next.look_is_rgb = parse_rgb(skin, &c[0]) && parse_rgb(accent, &c[1]) && parse_rgb(cJSON_GetArrayItem(look, 2), &c[2]);
+  next.look_skin = (int8_t)(cJSON_IsNumber(skin) && skin->valueint >= 0 && skin->valueint < 100 ? skin->valueint : 0);
+  next.look_accent = (int8_t)(cJSON_IsNumber(accent) && accent->valueint >= 0 && accent->valueint < 100 ? accent->valueint : 0);
+  ui_set_model(&next);  // the UI applies the look, between frames
 }
 
 // docs/PROTOCOL.md, "Art". All of it is read, or none: anything outside art.h's limits, or that isn't
@@ -306,10 +308,15 @@ static char named[LABEL_MAX + 1];
 static bool named_read;
 static portMUX_TYPE named_lock = portMUX_INITIALIZER_UNLOCKED;  // set from the link's task, read from the UI's
 
+// Up to LABEL_MAX bytes of well-formed UTF-8, with no control characters, " or \.
 static bool name_ok(const char *s) {
   if (strlen(s) > LABEL_MAX) return false;
-  for (const unsigned char *c = (const unsigned char *)s; *c; c++)
-    if (*c < 0x20 || *c == 0x7f || *c == '"' || *c == '\\') return false;
+  for (const unsigned char *c = (const unsigned char *)s; *c;) {
+    int more = *c < 0x80 ? 0 : (*c & 0xE0) == 0xC0 && *c >= 0xC2 ? 1 : (*c & 0xF0) == 0xE0 ? 2 : (*c & 0xF8) == 0xF0 && *c <= 0xF4 ? 3 : -1;
+    if (more < 0 || *c < 0x20 || *c == 0x7f || *c == '"' || *c == '\\') return false;
+    for (c++; more > 0; more--, c++)
+      if ((*c & 0xC0) != 0x80) return false;
+  }
   return true;
 }
 
@@ -319,11 +326,16 @@ static void name_set(const char *s) {
     return;
   }
   nvs_handle_t h;
-  if (nvs_open("ttycat", NVS_READWRITE, &h) == ESP_OK) {
-    if (*s) nvs_set_str(h, "name", s);
-    else nvs_erase_key(h, "name");
-    nvs_commit(h);
+  esp_err_t e = nvs_open("ttycat", NVS_READWRITE, &h);
+  if (e == ESP_OK) {
+    e = *s ? nvs_set_str(h, "name", s) : nvs_erase_key(h, "name");
+    if (e == ESP_ERR_NVS_NOT_FOUND) e = ESP_OK;  // there was no name to take away
+    if (e == ESP_OK) e = nvs_commit(h);
     nvs_close(h);
+  }
+  if (e != ESP_OK) {  // the Mac keeps its copy, and sends it again after the next hello
+    link_send_line("name: not kept");
+    return;
   }
   taskENTER_CRITICAL(&named_lock);
   strcpy(named, s);
@@ -333,7 +345,7 @@ static void name_set(const char *s) {
 
 void link_hello(void) {
   char name[LABEL_MAX + 1] = "";
-  if (!named_read) {  // storage is ready by the first hello: sound_begin opens it
+  if (!named_read) {  // storage is ready: app_main starts it before anything else
     size_t n = sizeof(name);
     nvs_handle_t h;
     if (nvs_open("ttycat", NVS_READONLY, &h) == ESP_OK) {
@@ -358,8 +370,31 @@ void link_hello(void) {
   link_send_line(line);
 }
 
+// Deeper than any message is: refused before parsing, which would run out of stack.
+static bool too_deep(const char *s) {
+  int depth = 0;
+  bool quoted = false;
+  for (; *s; s++) {
+    if (quoted) {
+      if (*s == '\\' && s[1]) s++;
+      else if (*s == '"') quoted = false;
+    } else if (*s == '"') {
+      quoted = true;
+    } else if (*s == '{' || *s == '[') {
+      if (++depth > JSON_DEPTH_MAX) return true;
+    } else if (*s == '}' || *s == ']') {
+      depth--;
+    }
+  }
+  return false;
+}
+
 static void handle_line(char *text, size_t len) {
   if (text[0] != '{') return;  // boot messages and panic output share the port
+  if (too_deep(text)) {
+    link_send_line("line: too deep, dropped");  // the daemon logs it
+    return;
+  }
   cJSON *j = cJSON_Parse(text);
   if (!j) return;
   char t[10];
@@ -413,10 +448,13 @@ static void rx_task(void *arg) {
         if (!overflow) {
           line[len] = 0;
           handle_line(line, len);
+        } else {
+          // Unread, so the board can't say what's going on. A state that never arrives shows as a lost link.
+          link_send_line("line: too long, dropped");
         }
         len = 0;
         overflow = false;
-      } else if (len < RX_LINE_MAX - 1) {
+      } else if (len < RX_LINE_MAX) {
         line[len++] = (char)buf[i];
       } else {
         overflow = true;
