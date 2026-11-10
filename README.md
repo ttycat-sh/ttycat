@@ -155,6 +155,8 @@ Issues and pull requests are welcome, for fixes, screens and docs. Please:
 - show what changed on screen with the preview, and run the tests and `unchanged.py`;
 - keep board-specific code in its board's folder.
 
+CI doesn't run on pull requests from forks, so nobody else's code runs with this repo's access. A maintainer reads the change first, then runs CI on a copy of the branch here.
+
 A board of your own stays in your own folder and isn't merged here: [boards/README.md](boards/README.md) says why, and how it still gets every update.
 
 ## Releases

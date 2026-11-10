@@ -8,6 +8,8 @@ permissions:
 
 jobs:
   checks:
+    # Never for a pull request from a fork: someone else's code doesn't run here, approved or not.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -30,6 +32,8 @@ jobs:
           done
 
   build:
+    # Never for a pull request from a fork: someone else's code doesn't run here, approved or not.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     # Every folder in boards/: a change to the shared code mustn't break any of them.
     strategy:
