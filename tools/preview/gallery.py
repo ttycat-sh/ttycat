@@ -139,6 +139,11 @@ def art_steps(art):
     yield "art-birthday", [*model(WORK[2:3], birthday=1), "run(1500);"]
 
 
+def last_steps():
+    """Screens added since: after all the others, so those are drawn at the moments they always were."""
+    yield "name", ["hush(0);", *model(WORK), "run(1500);", 'go_to("name:w1");', "run(300);"]  # the keyboard, for a session's name
+
+
 def script(art=None):
     c = ["#include <stdio.h>\n#include <stdlib.h>\n#include \"ui.h\"\nstatic art_t A;void m_art(const char*);",
          "void m_reset(long long);void m_no_approve(int);void m_add(const char*,const char*,const char*,const char*,const char*,const char*,"
@@ -147,7 +152,7 @@ def script(art=None):
          "void send_model(void);void run(int);void go_to(const char*);void ack(int,const char*);void hush(int);void snap(const char*);",
          "void script(void){"]
     names = []
-    for name, body in [*steps(), *(art_steps(art) if art else [])]:
+    for name, body in [*steps(), *(art_steps(art) if art else []), *last_steps()]:
         c += body + [f"snap({Q(name)});"]
         names.append(name)
     return "\n".join(c + ["}"]), names

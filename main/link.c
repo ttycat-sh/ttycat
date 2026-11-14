@@ -496,6 +496,18 @@ void link_answer(const char *id, const char *rev, int questions, const uint8_t *
   cJSON_Delete(j);
 }
 
+void link_name(const char *id, const char *name) {
+  cJSON *j = cJSON_CreateObject();
+  cJSON_AddStringToObject(j, "t", "act");
+  cJSON_AddStringToObject(j, "a", "name");
+  cJSON_AddStringToObject(j, "id", id);
+  cJSON_AddStringToObject(j, "name", name);
+  char *text = cJSON_PrintUnformatted(j);
+  if (text) link_send_line(text);
+  cJSON_free(text);
+  cJSON_Delete(j);
+}
+
 void link_watch(const char *id) {
   char buf[64];
   snprintf(buf, sizeof(buf), "{\"t\":\"watch\",\"id\":\"%s\"}", id);
