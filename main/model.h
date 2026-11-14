@@ -12,7 +12,7 @@
 #define OPTION_MAX 4       // in one question
 #define TYPED_MAX 200      // a typed answer
 #define NAME_MAX 27        // a name typed for a session: what its row has room for
-#define FW_VERSION "0.11.5"
+#define FW_VERSION "0.12.0"
 #define FW_PROTOCOL "1"  // docs/PROTOCOL.md: goes up when a change would break devices already built
 #define FW_LABEL "custom"  // your own build's name, shown in the app's Setup
 
