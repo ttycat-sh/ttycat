@@ -25,6 +25,7 @@ The Mac answers each `act` with `{"t":"ack","ok":true,"msg":""}`. An `ack` doesn
 | `open` | Brings that session up in its terminal on the Mac. It answers nothing. It can hold the daemon up for several seconds, so expect a gap in `state` | Any device |
 | `deny` | Says no to the prompt with this `rev`. Only when `ask` is `approve`, and only with the hook on (Setup > Answer prompts). Otherwise it's refused and the prompt stays in the terminal | Any device |
 | `seen`, `pet-pat`, `pet-here` | Marks a finished session as seen, gives Bit a heart, or says someone's here for its greeting | Any device |
+| `name` | Gives that session a name of the person's own, with `"name":"the login fix"`: from then on it's what `p` says, where the folder was. `""` takes it back. It needs no `rev` and answers nothing. The Mac keeps the name, and keeps it to 40 characters; the board's keyboard types up to 27, which is what a row shows | Any device |
 | `allow` | Says yes. Rule 2 in `AGENTS.md` applies | Release builds, or a build the person has allowed in Setup. Otherwise `state` has `na` |
 | `answer` | Answers a question, with `"ans":[{"o":[0],"t":"typed"}]`, one entry for each question | The same |
 

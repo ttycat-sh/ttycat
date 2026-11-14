@@ -56,6 +56,7 @@ void link_send_line(const char *json) { (void)json; }
 // What the board would send the Mac, one line each on stdout: tools/tests/test_answers.py reads them.
 void link_act(const char *act, const char *id, const char *rev) { printf("act %s %s %s\n", act, id, rev ? rev : ""); }
 void link_watch(const char *id) { (void)id; }
+void link_name(const char *id, const char *name) { printf("act name %s [%s]\n", id, name); }
 void link_answer(const char *id, const char *rev, int questions, const uint8_t *picks, const uint8_t *option_count, char typed[][TYPED_MAX + 1]) {
   (void)option_count; (void)typed;
   printf("act answer %s %s", id, rev);

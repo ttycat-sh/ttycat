@@ -10,6 +10,8 @@ void link_begin(void);
 void link_send_line(const char *json);
 void link_act(const char *act, const char *id, const char *rev);
 void link_watch(const char *id);
+// A name the person typed for this session, or "" to take it back: it goes by its folder again.
+void link_name(const char *id, const char *name);
 // Each question's picks, as a bitmask of options and any typed text.
 void link_answer(const char *id, const char *rev, int questions, const uint8_t *picks, const uint8_t *option_count,
                  char typed[][TYPED_MAX + 1]);

@@ -58,7 +58,7 @@ static const char *const S_CHECK[10] = {"..........", ".........g", "........gg"
 static const char *const S_SLEEP[10] = {"..........", "......ooo.", ".......o..", "......ooo.", ".www......",
                                         "...w......", "..w.......", ".www......", "..........", "wwwwwwwwww"};
 
-typedef enum { SCR_BOOT, SCR_OVERVIEW, SCR_QUEUE, SCR_ASK, SCR_DIFF, SCR_DETAIL, SCR_LOST, SCR_PET, SCR_CHOICE, SCR_KEYS } screen_t;
+typedef enum { SCR_BOOT, SCR_OVERVIEW, SCR_QUEUE, SCR_ASK, SCR_DIFF, SCR_DETAIL, SCR_LOST, SCR_PET, SCR_CHOICE, SCR_KEYS, SCR_NAME } screen_t;
 
 typedef enum {
   A_NONE,
@@ -78,6 +78,7 @@ typedef enum {
   A_LATER,
   A_OPEN,
   A_MUTE,
+  A_RENAME,
   A_ALERT,
   A_PET_OPEN,
   A_PET,
@@ -261,6 +262,18 @@ static void open_detail(const session_t *s) {
   link_watch(s->id);
   marquee_from = now_ms();
   go(SCR_DETAIL);
+}
+
+// A name of the person's own for a session, typed on the keyboard: two in one folder look alike without one.
+// It starts empty, and Done on nothing takes a name back, so the session goes by its folder again. The Mac
+// keeps the name. This is the keyboard, but not an ask: it answers nothing, and gives way to one.
+static char name_typed[NAME_MAX + 1];
+
+static void open_name(const session_t *s) {
+  strlcpy(cur_id, s->id, sizeof(cur_id));
+  name_typed[0] = 0;
+  keyboard_open(name_typed, sizeof(name_typed), "Name. Empty: its folder");  // short enough for the narrowest board
+  go(SCR_NAME);
 }
 
 static void open_session(const session_t *s) {
@@ -1155,6 +1168,24 @@ static void keyboard_finished(bool saved) {
   back_to_ask(s);
 }
 
+static bool act_waiting(void);
+
+static void name_finished(bool saved) {
+  session_t *s = find_session(cur_id);
+  if (!s) {
+    go(SCR_QUEUE);
+    return;
+  }
+  if (saved && act_waiting()) {  // one act at a time: the Mac's last answer hasn't come
+    strlcpy(toast, "busy: try again", sizeof(toast));
+    toast_until = now_ms() + TOAST_MS;
+  } else if (saved) {
+    link_name(s->id, name_typed);
+    other_until = now_ms() + ACK_TIMEOUT_MS;
+  }
+  go(SCR_DETAIL);
+}
+
 // ---------------------------------------------------------------- 09 Detail
 
 // One line in w px. Text that doesn't fit rests, then scrolls round and comes back.
@@ -1182,6 +1213,12 @@ static void draw_detail(const session_t *s) {
   char of[12];
   snprintf(of, sizeof(of), "%d / %d", pos, n);
   gfx_right(&vt16, HR, 2, MUTED, of);
+  // Its name is the person's to give: beside the count, clear of the way back.
+  int rw = gfx_caps_width(&sk9, "Rename", 0), rx = HR - gfx_width(&vt16, of, 0) - 12 - rw;
+  if (rx - 6 >= HL + 54) {
+    gfx_caps(&sk9, rx, 5, WHITE, "Rename", 0);
+    hit(rx - 6, 0, rw + 12, 22, A_RENAME, 0);
+  }
 
   bool t = tight();
   int card_h = t ? 56 : 72, r1 = t ? 30 : 34, r2 = t ? 50 : 58;
@@ -1391,6 +1428,10 @@ static void do_action(const hit_t *h) {
       }
       break;
     case A_MUTE: sound_set_muted(!sound_muted()); break;
+    case A_RENAME:
+      s = find_session(cur_id);
+      if (s) open_name(s);
+      break;
     case A_ALERT:
       s = find_session(alert_id);
       alert_id[0] = 0;
@@ -1463,7 +1504,9 @@ static void on_swipe(char dir) {
 }
 
 static void keyboard_finished_if(keyboard_result_t r) {
-  if (r != KEYBOARD_TYPING) keyboard_finished(r == KEYBOARD_DONE);
+  if (r == KEYBOARD_TYPING) return;
+  if (screen == SCR_NAME) name_finished(r == KEYBOARD_DONE);
+  else keyboard_finished(r == KEYBOARD_DONE);
 }
 
 static void touch_poll(void) {
@@ -1492,7 +1535,7 @@ static void touch_poll(void) {
     down = false;
     pressed = -1;
     if (wake_swallow || down_gen != screen_gen) return;
-    if (screen == SCR_KEYS) {  // on release, where the finger ended up, like a phone
+    if (screen == SCR_KEYS || screen == SCR_NAME) {  // on release, where the finger ended up, like a phone
       keyboard_finished_if(keyboard_release(last_x, last_y, now));
       return;
     }
@@ -1522,6 +1565,7 @@ static void notice_new_asks(void) {
     sound_chime();
     undim();
     if (screen == SCR_PET) leave_pet_for_ask();
+    if (screen == SCR_NAME) go(SCR_QUEUE);  // a name can be typed again: what's waiting comes first
     if (screen == SCR_QUEUE && tab != 0 && strcmp(s->agent, TAB_CODES[tab])) {
       strlcpy(alert_id, s->id, sizeof(alert_id));
       alert_until = now_ms() + ALERT_MS;
@@ -1603,6 +1647,9 @@ static void handle_goto(const char *name) {
   } else if (!strncmp(name, "detail:", 7)) {
     session_t *s = find_session(name + 7);
     if (s) open_detail(s);
+  } else if (!strncmp(name, "name:", 5)) {
+    session_t *s = find_session(name + 5);
+    if (s) open_name(s);
   } else if (!strcmp(name, "full") && (screen == SCR_ASK || screen == SCR_CHOICE)) {
     diff_scroll = 0;
     go(SCR_DIFF);
@@ -1653,7 +1700,7 @@ static void step_navigation(void) {
   }
 
   follow_ask(now);
-  if (screen == SCR_DETAIL && !find_session(cur_id)) go(SCR_QUEUE);
+  if ((screen == SCR_DETAIL || screen == SCR_NAME) && !find_session(cur_id)) go(SCR_QUEUE);
   if (opening && now - opening_since > OPEN_TIMEOUT_MS) {
     opening = false;
     strlcpy(toast, "no reply from the Mac", sizeof(toast));
@@ -1667,7 +1714,7 @@ static void step_navigation(void) {
 
   // Home when untouched, unless something needs you: the pet must never hide that.
   bool need = need_total() > 0;
-  bool between = screen == SCR_QUEUE || screen == SCR_OVERVIEW || screen == SCR_DETAIL;
+  bool between = screen == SCR_QUEUE || screen == SCR_OVERVIEW || screen == SCR_DETAIL || screen == SCR_NAME;
   if (between && !need && now - last_touch_ms > HOME_AFTER_MS) {
     go(SCR_PET);
   }
@@ -1718,7 +1765,7 @@ void ui_tick(void) {
           undim();
           break;
         }
-        if (screen == SCR_KEYS) keyboard_finished_if(keyboard_release(ev.x, ev.y, now_ms()));
+        if (screen == SCR_KEYS || screen == SCR_NAME) keyboard_finished_if(keyboard_release(ev.x, ev.y, now_ms()));
         else on_tap(ev.x, ev.y);
         break;
       case UI_EV_SWIPE:
@@ -1766,6 +1813,7 @@ void ui_tick(void) {
       if (cur && choice_ok(cur)) draw_choice(cur);
       break;
     case SCR_KEYS:
+    case SCR_NAME:
       keyboard_draw(now_ms(), down && !wake_swallow, last_x, last_y);
       break;
     case SCR_PET: draw_pet_screen(); break;

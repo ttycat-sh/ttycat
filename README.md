@@ -39,7 +39,7 @@ The board doesn't run agents and has no network connection. About once a second 
 | **Approval** | Allow or Deny. Deny ends the turn, like No in the terminal. If the text doesn't fit, it ends in `...`: swipe up to read all of it |
 | **Question** | When Claude asks you something. Tap an option, or **Type an answer** for the keyboard, then **Send**. **Next** moves through several questions, and **Later** steps away and keeps your picks |
 | **Needs you** | A prompt the board can't answer. **Open on Mac** brings that session's terminal forward |
-| **Detail** | A session's recent events, and the switch to mute its chime. Swipe right to go back |
+| **Detail** | A session's recent events, and the switch to mute its chime. **Rename** opens the keyboard for a name of your own, so two sessions in one folder can be told apart: Done on nothing takes the name back, and the Mac keeps it. Swipe right to go back |
 | **Home** | Bit, the time, and how your agents are doing. It appears after 30 s untouched, unless an agent is waiting on you or there's an error. The screen dims after 2 minutes, and the first touch only wakes it |
 
 **Bit** lives on the home screen, and in the Mac app. You don't have to look after it. It grows a level at a time, from days passing and from how much your agents work, and it earns things to wear on the way. Allowing or denying never changes it. [docs/BIT.md](docs/BIT.md) has how it grows.
